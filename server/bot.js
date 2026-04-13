@@ -2,7 +2,7 @@ const TelegramBot = require("node-telegram-bot-api");
 require("dotenv").config();
 const mongoose = require("mongoose");
 const crypto = require("crypto");
-const fetch = require("node-fetch");
+// const fetch = require("node-fetch");
 
 const token = process.env.BOT_TOKEN;
 const bot = new TelegramBot(token, { polling: true });
