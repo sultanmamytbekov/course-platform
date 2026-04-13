@@ -171,7 +171,7 @@ app.get("/lessons", async (req, res) => {
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
-
+require("./bot");
 // Получить урок по номеру
 // app.post("/admin-login", (req, res) => {
 //   const { password } = req.body;
