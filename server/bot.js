@@ -57,7 +57,8 @@ bot.onText(/\/add_user (.+)/, async (msg, match) => {
 
   const token = generateToken();
 
-  const link = `https://YOUR-SITE.vercel.app/access?token=${token}`;
+  const link = `https://course-platform-alpha-three.vercel.app/access?token=${token}`;
+//   const link = `https://YOUR-SITE.vercel.app/access?token=${token}`;
 
   await User.findOneAndUpdate(
     { telegram_id },
