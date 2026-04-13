@@ -1,15 +1,27 @@
 const TelegramBot = require("node-telegram-bot-api");
 require("dotenv").config();
 const mongoose = require("mongoose");
-const token = "8784087541:AAEyUSGkfBka52HrapdpwaLMsF5UHYtszoc";
+const crypto = require("crypto");
+const fetch = require("node-fetch");
+
+const token = process.env.BOT_TOKEN;
 const bot = new TelegramBot(token, { polling: true });
-const ADMIN_ID = 5560264800; // твой ID
+
+const ADMIN_ID = 5560264800;
+
+// DB
 const User = require("./models/User");
 
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log("MongoDB подключена (бот)"))
   .catch(err => console.log(err));
 
+// 🔐 генерация токена
+function generateToken() {
+  return crypto.randomBytes(16).toString("hex");
+}
+
+// 👤 регистрация пользователя
 bot.on("message", async (msg) => {
   const telegram_id = msg.chat.id;
 
@@ -19,10 +31,8 @@ bot.on("message", async (msg) => {
     await User.create({
       telegram_id,
       token: null,
-      expires_at: null,
       lessons_available: 0,
-      ip: null,
-      device: null,
+      expires_at: null,
       is_active: false,
     });
 
@@ -30,143 +40,95 @@ bot.on("message", async (msg) => {
   }
 });
 
-// команды бота
-const userState = {};
-bot.setMyCommands([
-  { command: "start", description: "👋 Старт бота" },
-  { command: "list_users", description: "👥 Список пользователей (admin)" },
-  { command: "add_user", description: "➕ Добавить пользователя (admin)" },
-  { command: "add_lessons", description: "📚 Добавить уроки (admin)" },
-  { command: "extend", description: "⏳ Продлить доступ (admin)" },
-  { command: "block", description: "🚫 Заблокировать пользователя (admin)" },
-  { command: "help", description: "ℹ️ Помощь" }
-]);
-
-// 🔹 старт
+// /start
 bot.onText(/\/start/, async (msg) => {
-  const telegram_id = msg.chat.id;
-
   bot.sendMessage(
     msg.chat.id,
-    `👋 Добро пожаловать!\n\nВаш ID: ${telegram_id}\n\nОтправьте этот ID менеджеру для получения доступа`
+    `👋 Добро пожаловать!\n\nВаш ID: ${msg.chat.id}\n\nОтправьте его менеджеру`
   );
 });
 
-// 🔹 список пользователей
-bot.onText(/\/list_users/, async (msg) => {
-  if (msg.chat.id !== ADMIN_ID) return;
-
-  const users = await User.find().limit(10);
-
-  let text = "👥 Пользователи:\n\n";
-
-  users.forEach((u) => {
-    text += `ID: ${u.telegram_id} | Уроки: ${u.lessons_available}\n`;
-  });
-
-  bot.sendMessage(msg.chat.id, text);
-});
-
-// 🔹 добавить пользователя
+// ➕ ADD USER
 bot.onText(/\/add_user (.+)/, async (msg, match) => {
-    if (msg.chat.id !== ADMIN_ID) {
-        return bot.sendMessage(msg.chat.id, "⛔ У тебя нет доступа");
-    }
-    const chatId = msg.chat.id;
+  if (msg.chat.id !== ADMIN_ID)
+    return bot.sendMessage(msg.chat.id, "⛔ Нет доступа");
 
-    const [telegram_id, lessons, days] = match[1].split(" ");
+  const [telegram_id, lessons, days] = match[1].split(" ");
 
-    const res = await fetch("http://localhost:5000/create-user", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-            telegram_id,
-            lessons: Number(lessons),
-            days: Number(days),
-        }),
-    });
+  const token = generateToken();
 
-    const data = await res.json();
+  const link = `https://YOUR-SITE.vercel.app/access?token=${token}`;
 
-    // отправляем тебе
-    bot.sendMessage(chatId, `✅ Пользователь создан\nОтправляю клиенту...`);
+  await User.findOneAndUpdate(
+    { telegram_id },
+    {
+      telegram_id,
+      token,
+      lessons_available: Number(lessons),
+      expires_at: new Date(Date.now() + Number(days) * 86400000),
+      is_active: true,
+    },
+    { upsert: true }
+  );
 
-    // отправляем клиенту
-    bot.sendMessage(telegram_id, `🎓 Вам открыт доступ к курсу:\n\n${data.link}`);
+  bot.sendMessage(msg.chat.id, "✅ Пользователь создан");
+
+  bot.sendMessage(
+    telegram_id,
+    `🎓 Вам открыт доступ к курсу:\n\n${link}`
+  );
 });
 
-// 🔹 добавить уроки
+// 📚 add lessons
 bot.onText(/\/add_lessons (.+)/, async (msg, match) => {
-    if (msg.chat.id !== ADMIN_ID) {
-        return bot.sendMessage(msg.chat.id, "⛔ У тебя нет доступа");
-    }
-    const chatId = msg.chat.id;
-    const [telegram_id, lessons] = match[1].split(" ");
+  if (msg.chat.id !== ADMIN_ID)
+    return bot.sendMessage(msg.chat.id, "⛔ Нет доступа");
 
-    const res = await fetch("http://localhost:5000/add-lessons", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-            telegram_id,
-            lessons: Number(lessons),
-        }),
-    });
+  const [telegram_id, lessons] = match[1].split(" ");
 
-    const data = await res.json();
+  await User.updateOne(
+    { telegram_id },
+    { $set: { lessons_available: Number(lessons) } }
+  );
 
-    bot.sendMessage(chatId, "✅ Уроки обновлены");
+  bot.sendMessage(msg.chat.id, "✅ Уроки обновлены");
 });
 
-// 🔹 продлить
+// ⏳ extend
 bot.onText(/\/extend (.+)/, async (msg, match) => {
-    if (msg.chat.id !== ADMIN_ID) {
-        return bot.sendMessage(msg.chat.id, "⛔ У тебя нет доступа");
+  if (msg.chat.id !== ADMIN_ID)
+    return bot.sendMessage(msg.chat.id, "⛔ Нет доступа");
+
+  const [telegram_id, days] = match[1].split(" ");
+
+  await User.updateOne(
+    { telegram_id },
+    {
+      $set: {
+        expires_at: new Date(Date.now() + Number(days) * 86400000),
+      },
     }
-    const chatId = msg.chat.id;
-    const [telegram_id, days] = match[1].split(" ");
+  );
 
-    await fetch("http://localhost:5000/extend", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-            telegram_id,
-            days: Number(days),
-        }),
-    });
-
-    bot.sendMessage(chatId, "⏳ Доступ продлён");
+  bot.sendMessage(msg.chat.id, "⏳ Продлено");
 });
 
-// 🔹 блок
+// 🚫 block
 bot.onText(/\/block (.+)/, async (msg, match) => {
-    if (msg.chat.id !== ADMIN_ID) {
-        return bot.sendMessage(msg.chat.id, "⛔ У тебя нет доступа");
-    }
-    const chatId = msg.chat.id;
-    const telegram_id = match[1];
+  if (msg.chat.id !== ADMIN_ID)
+    return bot.sendMessage(msg.chat.id, "⛔ Нет доступа");
 
-    await fetch("http://localhost:5000/block", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-            telegram_id: Number(telegram_id),
-        }),
-    });
+  const telegram_id = match[1];
 
-    bot.sendMessage(chatId, "🚫 Пользователь заблокирован");
+  await User.updateOne(
+    { telegram_id },
+    { $set: { is_active: false } }
+  );
+
+  bot.sendMessage(msg.chat.id, "🚫 Заблокирован");
 });
 
-// bot.on("message", (msg) => {
-//   console.log("ID:", msg.chat.id);
-// });
+// debug
 bot.on("message", (msg) => {
-    console.log("ТВОЙ ID:", msg.chat.id);
+  console.log("ID:", msg.chat.id);
 });
