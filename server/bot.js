@@ -11,7 +11,7 @@ if (!token) {
 
 const bot = new TelegramBot(token, { polling: true });
 
-const ADMIN_ID = 5560264800;
+const ADMIN_ID = 6395152471;
 
 // DB
 const User = require("./models/User");
