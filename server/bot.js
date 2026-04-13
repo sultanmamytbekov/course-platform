@@ -2,9 +2,13 @@ const TelegramBot = require("node-telegram-bot-api");
 require("dotenv").config();
 const mongoose = require("mongoose");
 const crypto = require("crypto");
-// const fetch = require("node-fetch");
 
 const token = process.env.BOT_TOKEN;
+if (!token) {
+  console.log("❌ BOT_TOKEN не найден в .env");
+  process.exit(1);
+}
+
 const bot = new TelegramBot(token, { polling: true });
 
 const ADMIN_ID = 5560264800;
@@ -20,6 +24,17 @@ mongoose.connect(process.env.MONGO_URI)
 function generateToken() {
   return crypto.randomBytes(16).toString("hex");
 }
+
+// 📋 команды (чтобы отображались в Telegram)
+bot.setMyCommands([
+  { command: "start", description: "👋 Старт" },
+  { command: "add_user", description: "➕ Добавить пользователя" },
+  { command: "add_lessons", description: "📚 Обновить уроки" },
+  { command: "extend", description: "⏳ Продлить доступ" },
+  { command: "block", description: "🚫 Заблокировать" },
+  { command: "reset_token", description: "🔄 Сброс токена" },
+  { command: "list_users", description: "👥 Список пользователей" }
+]);
 
 // 👤 регистрация пользователя
 bot.on("message", async (msg) => {
@@ -45,9 +60,7 @@ bot.onText(/\/start/, async (msg) => {
   bot.sendMessage(
     msg.chat.id,
     `👋 Добро пожаловать!\n\nВаш ID: <code>${msg.chat.id}</code>\n\nОтправьте его менеджеру`,
-    {
-      parse_mode: "HTML"
-    }
+    { parse_mode: "HTML" }
   );
 });
 
@@ -61,7 +74,6 @@ bot.onText(/\/add_user (.+)/, async (msg, match) => {
   const token = generateToken();
 
   const link = `https://course-platform-alpha-three.vercel.app/access?token=${token}`;
-//   const link = `https://YOUR-SITE.vercel.app/access?token=${token}`;
 
   await User.findOneAndUpdate(
     { telegram_id },
@@ -130,6 +142,49 @@ bot.onText(/\/block (.+)/, async (msg, match) => {
   );
 
   bot.sendMessage(msg.chat.id, "🚫 Заблокирован");
+});
+
+// 🔄 RESET TOKEN (НОВАЯ КОМАНДА)
+bot.onText(/\/reset_token (.+)/, async (msg, match) => {
+  if (msg.chat.id !== ADMIN_ID)
+    return bot.sendMessage(msg.chat.id, "⛔ Нет доступа");
+
+  const telegram_id = Number(match[1]);
+
+  const user = await User.findOne({ telegram_id });
+
+  if (!user) {
+    return bot.sendMessage(msg.chat.id, "❌ Пользователь не найден");
+  }
+
+  user.token = null;
+  user.ip = null;
+  user.device = null;
+
+  await user.save();
+
+  bot.sendMessage(msg.chat.id, "🔄 Токен сброшен");
+
+  bot.sendMessage(
+    telegram_id,
+    "🔄 Ваш доступ обновлён. Откройте ссылку заново."
+  );
+});
+
+// 👥 список пользователей
+bot.onText(/\/list_users/, async (msg) => {
+  if (msg.chat.id !== ADMIN_ID)
+    return bot.sendMessage(msg.chat.id, "⛔ Нет доступа");
+
+  const users = await User.find().limit(10);
+
+  let text = "👥 Пользователи:\n\n";
+
+  users.forEach((u) => {
+    text += `ID: ${u.telegram_id} | Уроки: ${u.lessons_available}\n`;
+  });
+
+  bot.sendMessage(msg.chat.id, text);
 });
 
 // debug
