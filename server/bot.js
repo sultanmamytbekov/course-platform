@@ -44,7 +44,10 @@ bot.on("message", async (msg) => {
 bot.onText(/\/start/, async (msg) => {
   bot.sendMessage(
     msg.chat.id,
-    `👋 Добро пожаловать!\n\nВаш ID: ${msg.chat.id}\n\nОтправьте его менеджеру`
+    `👋 Добро пожаловать!\n\nВаш ID: <code>${msg.chat.id}</code>\n\nОтправьте его менеджеру`,
+    {
+      parse_mode: "HTML"
+    }
   );
 });
 
