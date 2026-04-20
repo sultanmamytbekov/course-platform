@@ -36,6 +36,12 @@ mongoose.connect(process.env.MONGO_URI)
   return res.json({ success: false });
 }); 
   
+
+app.get("/", (req, res) => {
+  res.send("🚀 API работает");
+});
+
+
   // 🔑 создать пользователя
 app.post("/create-user", async (req, res) => {
   const { telegram_id, lessons, days } = req.body;
@@ -171,7 +177,12 @@ app.get("/lessons", async (req, res) => {
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
+
+
+
 require("./bot");
+
+
 // Получить урок по номеру
 // app.post("/admin-login", (req, res) => {
 //   const { password } = req.body;

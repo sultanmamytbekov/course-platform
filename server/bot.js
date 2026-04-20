@@ -11,10 +11,9 @@ if (!token) {
 
 const bot = new TelegramBot(token, { polling: true });
 
-const ADMIN_ID = 6395152471;
-
+const ADMINS = [5560264800, 6395152471];
 // DB
-const User = require("./models/User");
+const User = require("./models/User");   
 
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log("MongoDB подключена (бот)"))
@@ -66,7 +65,7 @@ bot.onText(/\/start/, async (msg) => {
 
 // ➕ ADD USER
 bot.onText(/\/add_user (.+)/, async (msg, match) => {
-  if (msg.chat.id !== ADMIN_ID)
+  if (!ADMINS.includes(msg.chat.id))
     return bot.sendMessage(msg.chat.id, "⛔ Нет доступа");
 
   const [telegram_id, lessons, days] = match[1].split(" ");
@@ -97,7 +96,7 @@ bot.onText(/\/add_user (.+)/, async (msg, match) => {
 
 // 📚 add lessons
 bot.onText(/\/add_lessons (.+)/, async (msg, match) => {
-  if (msg.chat.id !== ADMIN_ID)
+  if (!ADMINS.includes(msg.chat.id))
     return bot.sendMessage(msg.chat.id, "⛔ Нет доступа");
 
   const [telegram_id, lessons] = match[1].split(" ");
@@ -112,7 +111,7 @@ bot.onText(/\/add_lessons (.+)/, async (msg, match) => {
 
 // ⏳ extend
 bot.onText(/\/extend (.+)/, async (msg, match) => {
-  if (msg.chat.id !== ADMIN_ID)
+  if (!ADMINS.includes(msg.chat.id))
     return bot.sendMessage(msg.chat.id, "⛔ Нет доступа");
 
   const [telegram_id, days] = match[1].split(" ");
@@ -131,7 +130,7 @@ bot.onText(/\/extend (.+)/, async (msg, match) => {
 
 // 🚫 block
 bot.onText(/\/block (.+)/, async (msg, match) => {
-  if (msg.chat.id !== ADMIN_ID)
+  if (!ADMINS.includes(msg.chat.id))
     return bot.sendMessage(msg.chat.id, "⛔ Нет доступа");
 
   const telegram_id = match[1];
@@ -146,7 +145,7 @@ bot.onText(/\/block (.+)/, async (msg, match) => {
 
 // 🔄 RESET TOKEN (НОВАЯ КОМАНДА)
 bot.onText(/\/reset_token (.+)/, async (msg, match) => {
-  if (msg.chat.id !== ADMIN_ID)
+  if (!ADMINS.includes(msg.chat.id))
     return bot.sendMessage(msg.chat.id, "⛔ Нет доступа");
 
   const telegram_id = Number(match[1]);
@@ -173,7 +172,7 @@ bot.onText(/\/reset_token (.+)/, async (msg, match) => {
 
 // 👥 список пользователей
 bot.onText(/\/list_users/, async (msg) => {
-  if (msg.chat.id !== ADMIN_ID)
+  if (!ADMINS.includes(msg.chat.id))
     return bot.sendMessage(msg.chat.id, "⛔ Нет доступа");
 
   const users = await User.find().limit(10);

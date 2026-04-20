@@ -9,26 +9,37 @@ export default function AdminLogin() {
     const [open, setOpen] = useState(false);
 
     // 🔐 проверка пароля
-    const check = async () => {
-    console.log("CLICKED CHECK"); // 👈 проверка
+   const check = async () => {
+    console.log("CLICKED CHECK");
 
-    const res = await fetch("https://course-platform-api-9hcf.onrender.com/admin-login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
-    });
+    try {
+        const res = await fetch("https://course-platform-api-9hcf.onrender.com/admin-login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ password }),
+        });
 
-    console.log("RESPONSE:", res); // 👈 проверка
+        console.log("STATUS:", res.status);
 
-    const data = await res.json();
+        if (!res.ok) {
+            alert("Ошибка сервера или неверный пароль");
+            return;
+        }
 
-    console.log("DATA:", data); // 👈 проверка
+        const data = await res.json();
 
-    if (data.success) {
-        localStorage.setItem("admin", "true");
-        router.push("/admin");
-    } else {
-        alert("Неверный пароль");
+        console.log("DATA:", data);
+
+        if (data.success) {
+            localStorage.setItem("admin", "true");
+            window.location.href = "/admin"; // иногда лучше чем router
+        } else {
+            alert("Неверный пароль");
+        }
+
+    } catch (err) {
+        console.error("FETCH ERROR:", err);
+        alert("Сервер не отвечает (Render спит 😴)");
     }
 };
 
