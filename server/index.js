@@ -41,6 +41,11 @@ app.get("/", (req, res) => {
   res.send("🚀 API работает");
 });
 
+// render
+app.get("/ping", (req, res) => {
+  res.send("pong");
+});
+
 
   // 🔑 создать пользователя
 app.post("/create-user", async (req, res) => {
