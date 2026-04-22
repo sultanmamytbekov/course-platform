@@ -289,16 +289,3 @@ bot.onText(/\/list_users/, async (msg) => {
 
   bot.sendMessage(msg.chat.id, text);
 });
-
-bot.sendMessage(userId, "Открыть курс", {
-  reply_markup: {
-    inline_keyboard: [
-      [
-        {
-          text: "📚 Открыть курс",
-          url: link,
-        },
-      ],
-    ],
-  },
-});

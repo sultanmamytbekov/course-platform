@@ -105,15 +105,10 @@ export default function AccessPage() {
     const ua = navigator.userAgent.toLowerCase();
 
     if (ua.includes("telegram")) {
-      {
-        typeof window !== "undefined" &&
-        navigator.userAgent.toLowerCase().includes("telegram") && (
-          <div className="bg-yellow-100 text-center p-3 mb-4 rounded-lg">
-            <p className="text-sm text-black">
-              ⚠️ Откройте сайт в браузере для нормальной работы видео
-            </p>
-          </div>
-        )
+      const open = confirm("Открыть в браузере для нормальной работы видео?");
+
+      if (open) {
+        window.location.href = window.location.href;
       }
     }
   }, []);
