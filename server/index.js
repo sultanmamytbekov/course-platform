@@ -99,7 +99,7 @@ app.get("/check-access", async (req, res) => {
     user.device = device;
     await user.save();
   } else {
-    if (user.ip !== ip || user.device !== device) {
+    if (user.device !== device) {
       return res.status(403).json({ error: "Другое устройство" });
     }
   }
