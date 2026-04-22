@@ -99,7 +99,7 @@ app.get("/check-access", async (req, res) => {
     user.device = device;
     await user.save();
   } else {
-    if (user.device !== device) {
+    if (user.ip !== ip || user.device !== device) {
       return res.status(403).json({ error: "Другое устройство" });
     }
   }
@@ -174,63 +174,15 @@ app.post("/add-lesson", async (req, res) => {
   res.json({ success: true });
 });
 // Получить все уроки
-// app.get("/lessons", async (req, res) => {
-//   try {
-//     const lessons = await Lesson.find().sort({ lesson_number: 1 });
-//     res.json(lessons);
-//   } catch (e) {
-//     res.status(500).json({ error: "Ошибка сервера" });
-//   }
-// });
 app.get("/lessons", async (req, res) => {
   try {
     const lessons = await Lesson.find().sort({ lesson_number: 1 });
-
-    const secured = lessons.map((l) => {
-      if (!l.videoId) {
-        return {
-          lesson_number: l.lesson_number,
-          title: l.title,
-          videoId: null,
-        };
-      }
-
-      const signed = signVideoId(l.videoId);
-
-      return {
-        lesson_number: l.lesson_number,
-        title: l.title,
-        videoId: signed.videoId,
-        expires: signed.expires,
-        token: signed.signature,
-      };
-    });
-
-    res.json(secured);
+    res.json(lessons);
   } catch (e) {
-    console.error("LESSONS ERROR:", e);
     res.status(500).json({ error: "Ошибка сервера" });
   }
 });
 
-app.use((req, res, next) => {
-  res.setHeader("X-Frame-Options", "SAMEORIGIN");
-  next();
-});
-
-
-const crypto = require("crypto");
-
-function signVideoId(videoId) {
-  const expires = Math.floor(Date.now() / 1000) + 3600;
-
-  const signature = crypto
-    .createHash("sha256")
-    .update(videoId + expires + process.env.BUNNY_SECRET)
-    .digest("hex");
-
-  return { videoId, expires, signature };
-}
 
 
 require("./bot");

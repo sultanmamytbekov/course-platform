@@ -324,7 +324,6 @@ export default function AccessPage() {
           style={{ top: Math.random() * 300, left: Math.random() * 600 }}>
           {data?.telegram_id}
         </div>
-
         <iframe
           loading="lazy"
           key={currentLesson}
@@ -375,7 +374,7 @@ export default function AccessPage() {
 
                 {lessons.map((lesson) => {
                   const isOpen = lesson <= data.lessons_available;
-                  const exists = lessonsData[lesson];
+                  const exists = lessonsData[lesson]?.video;
 
                   return (
                     <div
