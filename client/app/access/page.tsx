@@ -102,18 +102,6 @@ export default function AccessPage() {
   }, []);
 
   useEffect(() => {
-    const ua = navigator.userAgent.toLowerCase();
-
-    if (ua.includes("telegram")) {
-      const open = confirm("Открыть в браузере для нормальной работы видео?");
-
-      if (open) {
-        window.location.href = window.location.href;
-      }
-    }
-  }, []);
-
-  useEffect(() => {
     const block = (e: { preventDefault: () => any; }) => e.preventDefault();
 
     document.addEventListener("contextmenu", block);
