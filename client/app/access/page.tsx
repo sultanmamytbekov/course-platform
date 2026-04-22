@@ -8,10 +8,10 @@ export default function AccessPage() {
 
   const [openAdmin, setOpenAdmin] = useState(false);
   const [password, setPassword] = useState("");
-const [tapCount, setTapCount] = useState(0);
+  const [tapCount, setTapCount] = useState(0);
 
   const [loading, setLoading] = useState(true);
-const [videoError, setVideoError] = useState(false);
+  const [videoError, setVideoError] = useState(false);
 
   const [openSection, setOpenSection] = useState<number | null>(0);
   const [currentLesson, setCurrentLesson] = useState(1);
@@ -91,6 +91,7 @@ const [videoError, setVideoError] = useState(false);
           map[l.lesson_number] = {
             title: l.title,
             video: l.video_url,
+            section: l.section,
           };
         });
         setLessonsData(map);
@@ -100,7 +101,24 @@ const [videoError, setVideoError] = useState(false);
       });
   }, []);
 
+  useEffect(() => {
+    const block = (e: { preventDefault: () => any; }) => e.preventDefault();
 
+    document.addEventListener("contextmenu", block);
+
+    document.addEventListener("keydown", (e) => {
+      if (
+        e.key === "PrintScreen" ||
+        (e.ctrlKey && ["s", "u", "p"].includes(e.key.toLowerCase()))
+      ) {
+        e.preventDefault();
+      }
+    });
+
+    return () => {
+      document.removeEventListener("contextmenu", block);
+    };
+  }, []);
 
   // https://vimeo.com/1181447908
   if (loading) {
@@ -141,6 +159,22 @@ const [videoError, setVideoError] = useState(false);
     { title: "Тема 3: Практика", start: 21, end: 30 },
   ];
 
+  const groupedSections: Record<string, number[]> = {};
+
+  for (let i = 1; i <= 90; i++) {
+    const lesson = lessonsData[i];
+
+    const sectionName = lesson?.title
+      ? lesson?.section || "Без секции"
+      : "Без секции";
+
+    if (!groupedSections[sectionName]) {
+      groupedSections[sectionName] = [];
+    }
+
+    groupedSections[sectionName].push(i);
+  }
+
   return (<div className="bg-gray-100 min-h-screen">
 
     {/* 🔐 ADMIN */}
@@ -178,21 +212,21 @@ const [videoError, setVideoError] = useState(false);
       {/* HEADER */}
       <div className="flex justify-between items-center mb-6">
         <h1
-  className="text-3xl font-bold text-black cursor-pointer select-none"
-  onClick={() => {
-    setTapCount((prev) => {
-      const next = prev + 1;
-      if (next >= 5) {
-        setOpenAdmin(true);
-        return 0; // сброс
-      }
+          className="text-3xl font-bold text-black cursor-pointer select-none"
+          onClick={() => {
+            setTapCount((prev) => {
+              const next = prev + 1;
+              if (next >= 5) {
+                setOpenAdmin(true);
+                return 0; // сброс
+              }
 
-      return next;
-    });
-  }}
->
-  Мой курс
-</h1>
+              return next;
+            });
+          }}
+        >
+          Мой курс
+        </h1>
 
         <div className="text-sm text-gray-600">
           Доступ до:{" "}
@@ -238,60 +272,81 @@ const [videoError, setVideoError] = useState(false);
       </div> */}
       <div className="bg-white rounded-2xl shadow-xl overflow-hidden mb-8 relative">
 
-  {/* ⏳ LOADING */}
-  {loading && !videoError && (
-    <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-10">
-      <div className="flex flex-col items-center gap-3">
-        <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-        <p className="text-sm text-gray-500">Загрузка видео...</p>  
+        {/* ⏳ LOADING */}
+        {loading && !videoError && (
+          <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-10">
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+              <p className="text-sm text-gray-500">Загрузка видео...</p>
+            </div>
+          </div>
+        )}
+
+        {/* ❌ ERROR */}
+        {videoError && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-100 z-10 text-center p-4">
+            <p className="text-red-500 font-semibold mb-2">
+              Ошибка загрузки видео
+            </p>
+            <p className="text-sm text-gray-500 mb-3">
+              Проверь интернет или попробуй позже
+            </p>
+
+            <button
+              onClick={() => {
+                setVideoError(false);
+                setLoading(true);
+                setCurrentLesson((prev) => prev); // перезагрузка
+              }}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg"
+            >
+              Повторить
+            </button>
+          </div>
+        )}
+
+        {/* 🎥 VIDEO */}
+        {/* <iframe
+          key={currentLesson}
+          className="w-full h-[420px]"
+          src={lessonsData[currentLesson]?.video}
+          allow="autoplay; fullscreen"
+          onLoad={() => setLoading(false)}
+          onError={() => {
+            setVideoError(true);
+            setLoading(false);
+          }}
+        /> */}
+        <div className="absolute top-2 left-2 text-white text-xs opacity-70 pointer-events-none z-20">
+          ID: {data?.telegram_id || "USER"}
+        </div>
+        <div className="absolute text-white text-xs opacity-50 animate-pulse pointer-events-none z-20"
+          style={{ top: Math.random() * 300, left: Math.random() * 600 }}>
+          {data?.telegram_id}
+        </div>
+
+        <iframe
+          loading="lazy"
+          key={currentLesson}
+          className="w-full h-[420px]"
+          src={lessonsData[currentLesson]?.video}
+          allowFullScreen
+          // allow="autoplay; fullscreen"
+          allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;"
+          onLoad={() => setLoading(false)}
+          onError={() => {
+            setVideoError(true);
+            setLoading(false);
+          }}
+        />
+        {/* TITLE */}
+        <div className="p-4 border-t">
+          <h3 className="text-lg font-semibold text-black">
+            Урок {currentLesson}:{" "}
+            {lessonsData[currentLesson]?.title || "Урок"}
+          </h3>
+        </div>
       </div>
-    </div>
-  )}
-
-  {/* ❌ ERROR */}
-  {videoError && (
-    <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-100 z-10 text-center p-4">
-      <p className="text-red-500 font-semibold mb-2">
-        Ошибка загрузки видео
-      </p>
-      <p className="text-sm text-gray-500 mb-3">
-        Проверь интернет или попробуй позже
-      </p>
-
-      <button
-        onClick={() => {
-          setVideoError(false);
-          setLoading(true);
-          setCurrentLesson((prev) => prev); // перезагрузка
-        }}
-        className="bg-blue-600 text-white px-4 py-2 rounded-lg"
-      >
-        Повторить
-      </button>
-    </div>
-  )}
-
-  {/* 🎥 VIDEO */}
-  <iframe
-    key={currentLesson}
-    className="w-full h-[420px]"
-    src={lessonsData[currentLesson]?.video}
-    allow="autoplay; fullscreen"
-    onLoad={() => setLoading(false)}
-    onError={() => {
-      setVideoError(true);
-      setLoading(false);
-    }}
-  />
-
-  {/* TITLE */}
-  <div className="p-4 border-t">
-    <h3 className="text-lg font-semibold text-black">
-      Урок {currentLesson}:{" "}
-      {lessonsData[currentLesson]?.title || "Урок"}
-    </h3>
-  </div>
-</div>
 
       {/* 📚 CONTENT */}
       <h2 className="text-xl font-semibold mb-4 text-black">
@@ -300,7 +355,7 @@ const [videoError, setVideoError] = useState(false);
 
       <div className="bg-white rounded-2xl shadow-xl divide-y">
 
-        {sections.map((section, idx) => (
+        {Object.entries(groupedSections).map(([sectionTitle, lessons], idx) => (
           <div key={idx}>
 
             {/* HEADER */}
@@ -310,7 +365,7 @@ const [videoError, setVideoError] = useState(false);
               }
               className="w-full text-left px-5 py-4 font-semibold text-black hover:bg-gray-50 flex justify-between"
             >
-              {section.title}
+              {sectionTitle}
               <span>{openSection === idx ? "−" : "+"}</span>
             </button>
 
@@ -318,9 +373,9 @@ const [videoError, setVideoError] = useState(false);
             {openSection === idx && (
               <div className="px-5 pb-4">
 
-                {[...Array(section.end - section.start + 1)].map((_, i) => {
-                  const lesson = section.start + i;
+                {lessons.map((lesson) => {
                   const isOpen = lesson <= data.lessons_available;
+                  const exists = lessonsData[lesson];
 
                   return (
                     <div
@@ -330,7 +385,7 @@ const [videoError, setVideoError] = useState(false);
                         : "bg-gray-100"
                         }`}
                       onClick={() => {
-                        if (!isOpen) return;
+                        if (!isOpen || !exists) return;
 
                         setCurrentLesson(lesson);
                         window.scrollTo({
@@ -341,7 +396,7 @@ const [videoError, setVideoError] = useState(false);
                     >
                       <div className="flex items-center gap-3">
 
-                        {isOpen ? (
+                        {isOpen && exists ? (
                           <span className="text-green-500 text-lg">✔</span>
                         ) : (
                           <span className="text-gray-400 text-lg">🔒</span>
@@ -353,14 +408,20 @@ const [videoError, setVideoError] = useState(false);
                         >
                           Урок {lesson}
                           <span className="mx-2 text-gray-400">|</span>
-                          <span className={isOpen ? "text-gray-700" : "text-gray-400"}>
-                            {lessonsData[lesson]?.title || "Без названия"}
+                          <span
+                            className={
+                              isOpen && exists
+                                ? "text-gray-700"
+                                : "text-gray-400"
+                            }
+                          >
+                            {exists?.title || "Нет урока"}
                           </span>
                         </span>
 
                       </div>
 
-                      {isOpen && (
+                      {isOpen && exists && (
                         <span className="text-blue-600 text-sm">
                           Смотреть
                         </span>
