@@ -108,20 +108,11 @@ bot.on("message", async (msg) => {
       );
 
       bot.sendMessage(msg.chat.id, "✅ Пользователь создан");
-
       try {
-        await bot.sendMessage(state.telegram_id, "🎓 Ваш доступ к курсу:", {
-          reply_markup: {
-            inline_keyboard: [
-              [
-                {
-                  text: "📚 Открыть курс",
-                  url: link,
-                },
-              ],
-            ],
-          },
-        });
+        await bot.sendMessage(
+          state.telegram_id,
+          `🎓 Ваш доступ открыт!\n\n📌 Чтобы всё работало правильно:\nЗажмите ссылку и выберите “Открыть в браузере” (Chrome / Safari).\n\n${link}`
+        );
       } catch { }
 
       delete states[msg.chat.id];
@@ -217,18 +208,7 @@ bot.on("message", async (msg) => {
     bot.sendMessage(msg.chat.id, "🔄 Токен обновлён");
 
     try {
-      await bot.sendMessage(telegram_id, "🔐 Новый доступ:", {
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: "📚 Открыть курс",
-                url: link,
-              },
-            ],
-          ],
-        },
-      });
+      await bot.sendMessage(telegram_id, `🔐 Новый доступ:\n\n📌 Чтобы всё работало правильно:\nЗажмите ссылку и выберите “Открыть в браузере” (Chrome / Safari).\n\n${link}`);
     } catch { }
 
     delete states[msg.chat.id];

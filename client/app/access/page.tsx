@@ -374,8 +374,8 @@ export default function AccessPage() {
 
                 {lessons.map((lesson) => {
                   const isOpen = lesson <= data.lessons_available;
-                  const exists = lessonsData[lesson]?.video;
-
+                  const exists = lessonsData[lesson];
+                    
                   return (
                     <div
                       key={lesson}
