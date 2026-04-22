@@ -183,21 +183,34 @@ app.post("/add-lesson", async (req, res) => {
 //   }
 // });
 app.get("/lessons", async (req, res) => {
-  const lessons = await Lesson.find().sort({ lesson_number: 1 });
+  try {
+    const lessons = await Lesson.find().sort({ lesson_number: 1 });
 
-  const secured = lessons.map((l) => {
-    const signed = signVideoId(l.videoId);
+    const secured = lessons.map((l) => {
+      if (!l.videoId) {
+        return {
+          lesson_number: l.lesson_number,
+          title: l.title,
+          videoId: null,
+        };
+      }
 
-    return {
-      lesson_number: l.lesson_number,
-      title: l.title,
-      videoId: signed.videoId,
-      expires: signed.expires,
-      token: signed.signature,
-    };
-  });
+      const signed = signVideoId(l.videoId);
 
-  res.json(secured);
+      return {
+        lesson_number: l.lesson_number,
+        title: l.title,
+        videoId: signed.videoId,
+        expires: signed.expires,
+        token: signed.signature,
+      };
+    });
+
+    res.json(secured);
+  } catch (e) {
+    console.error("LESSONS ERROR:", e);
+    res.status(500).json({ error: "Ошибка сервера" });
+  }
 });
 
 app.use((req, res, next) => {
