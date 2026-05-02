@@ -12,7 +12,7 @@ if (!token) {
 
 const bot = new TelegramBot(token, { polling: true });
 
-const ADMINS = [5560264800, 6395152471];
+const ADMINS = [5560264800, 6395152471, 7786879039];
 const User = require("./models/User");
 
 // 🧠 состояния
