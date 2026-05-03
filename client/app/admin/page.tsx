@@ -100,8 +100,8 @@ export default function AdminPanel() {
         </div>
 
         <div className="bg-orange-400 text-white rounded-2xl p-5">
-          <p className="text-sm opacity-80">Expiring</p>
-          <h3 className="text-2xl font-bold">8</h3>
+          <p className="text-sm opacity-80">Admins</p>
+          <h3 className="text-2xl font-bold">2</h3>
         </div>
       </div>
 

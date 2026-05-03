@@ -36,6 +36,7 @@ bot.setMyCommands([
   { command: "add_lessons", description: "📚 Обновить уроки" },
   { command: "extend", description: "⏳ Продлить доступ" },
   { command: "block", description: "🚫 Заблокировать" },
+  { command: "unblock", description: "✅ Разблокировать" },
   { command: "reset_token", description: "🔄 Сброс токена" },
   { command: "list_users", description: "👥 Список пользователей" },
   { command: "cancel", description: "❌ Отмена" }
@@ -182,7 +183,26 @@ bot.on("message", async (msg) => {
     bot.sendMessage(msg.chat.id, "🚫 Заблокирован");
     delete states[msg.chat.id];
   }
+  // ===== UNBLOCK =====
+  if (state.action === "unblock") {
+    if (!isNumber(text)) return bot.sendMessage(msg.chat.id, "❗ Введите ID");
 
+    await User.updateOne(
+      { telegram_id: Number(text) },
+      { $set: { is_active: true } }
+    );
+
+    bot.sendMessage(msg.chat.id, "✅ Пользователь разблокирован");
+
+    try {
+      await bot.sendMessage(
+        Number(text),
+        "🔓 Ваш доступ восстановлен. Можете снова пользоваться курсом 🎓"
+      );
+    } catch { }
+
+    delete states[msg.chat.id];
+  }
   // ===== RESET TOKEN =====
   if (state.action === "reset_token") {
     if (!isNumber(text)) return bot.sendMessage(msg.chat.id, "❗ Введите ID");
@@ -240,6 +260,10 @@ bot.onText(/\/extend$/, (msg) => {
 
 bot.onText(/\/block$/, (msg) => {
   startAction(msg, "block", "👤 Введите Telegram ID:");
+});
+
+bot.onText(/\/unblock$/, (msg) => {
+  startAction(msg, "unblock", "👤 Введите Telegram ID:");
 });
 
 bot.onText(/\/reset_token$/, (msg) => {
