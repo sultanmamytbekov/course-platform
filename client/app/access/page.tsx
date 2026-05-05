@@ -14,7 +14,7 @@ export default function AccessPage() {
   const [videoError, setVideoError] = useState(false);
 
   const [openSection, setOpenSection] = useState<number | null>(0);
-  const [currentLesson, setCurrentLesson] = useState(1);
+  const [currentLesson, setCurrentLesson] = useState(0);
 
 
   // 📡 загрузка курса
@@ -161,7 +161,7 @@ export default function AccessPage() {
 
   const groupedSections: Record<string, number[]> = {};
 
-  for (let i = 1; i <= 90; i++) {
+  for (let i = 0; i <= 90; i++) {
     const lesson = lessonsData[i];
 
     const sectionName = lesson?.title
@@ -373,7 +373,7 @@ export default function AccessPage() {
               <div className="px-5 pb-4">
 
                 {lessons.map((lesson) => {
-                  const isOpen = lesson <= data.lessons_available;
+                  const isOpen = lesson === 0 || lesson <= data.lessons_available;
                   const exists = lessonsData[lesson];
                     
                   return (
@@ -405,7 +405,7 @@ export default function AccessPage() {
                           className={`text-sm ${isOpen ? "text-black" : "text-gray-400"
                             }`}
                         >
-                          Урок {lesson}
+                          Урок {lesson === 0 ? "Введение" : lesson}
                           <span className="mx-2 text-gray-400">|</span>
                           <span
                             className={
