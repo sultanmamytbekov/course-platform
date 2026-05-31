@@ -4,7 +4,7 @@ const cors = require("cors");
 const mongoose = require("mongoose");
 const User = require("./models/User");
 const Lesson = require("./models/Lesson");
-
+const UserProgress = require("./models/UserProgress");
 
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log("MongoDB подключена"))
@@ -108,6 +108,61 @@ app.get("/check-access", async (req, res) => {
     lessons_available: user.lessons_available,
     expires_at: user.expires_at,
   });
+});
+
+app.get("/user-progress/:telegram_id", async (req, res) => {
+  try {
+    let progress = await UserProgress.findOne({
+      telegram_id: Number(req.params.telegram_id),
+    });
+
+    if (!progress) {
+      progress = await UserProgress.create({
+        telegram_id: Number(req.params.telegram_id),
+      });
+    }
+
+    res.json(progress);
+  } catch (error) {
+    res.status(500).json({
+      error: "Ошибка сервера",
+    });
+  }
+});
+
+app.post("/save-progress", async (req, res) => {
+  try {
+    const {
+      telegram_id,
+      favorites,
+      bookmarks,
+      watched_lessons,
+      last_lesson,
+    } = req.body;
+
+    const progress =
+      await UserProgress.findOneAndUpdate(
+        {
+          telegram_id,
+        },
+        {
+          favorites,
+          bookmarks,
+          watched_lessons,
+          last_lesson,
+        },
+        {
+          upsert: true,
+          new: true,
+        }
+      );
+
+    res.json(progress);
+  } catch (error) {
+    res.status(500).json({
+      error: "Ошибка сервера",
+    });
+  }
 });
 
 app.listen(PORT, () => {
