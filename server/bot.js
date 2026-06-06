@@ -237,57 +237,101 @@ bot.on("message", async (msg) => {
 
     delete states[msg.chat.id];
   }
-});
-// ===== ADD USER APP =====
-if (state.action === "add_user_app") {
 
-  if (state.step === "id") {
-    if (!isNumber(text))
-      return bot.sendMessage(msg.chat.id, "❗ Введите число");
+  // ===== ADD USER APP =====
+  if (state.action === "add_user_app") {
 
-    state.telegram_id = Number(text);
-    state.step = "lessons";
+    if (state.step === "id") {
+      if (!isNumber(text))
+        return bot.sendMessage(msg.chat.id, "❗ Введите число");
 
-    return bot.sendMessage(msg.chat.id, "📚 Сколько уроков?");
+      state.telegram_id = Number(text);
+      state.step = "lessons";
+
+      return bot.sendMessage(msg.chat.id, "📚 Сколько уроков?");
+    }
+
+    if (state.step === "lessons") {
+      if (!isNumber(text))
+        return bot.sendMessage(msg.chat.id, "❗ Введите число");
+
+      state.lessons = Number(text);
+      state.step = "days";
+
+      return bot.sendMessage(msg.chat.id, "⏳ На сколько дней?");
+    }
+
+    if (state.step === "days") {
+
+      const tokenGen = generateToken();
+
+      await User.findOneAndUpdate(
+        { telegram_id: state.telegram_id },
+        {
+          telegram_id: state.telegram_id,
+          token: tokenGen,
+          lessons_available: state.lessons,
+          expires_at: new Date(
+            Date.now() + Number(text) * 86400000
+          ),
+          is_active: true,
+        },
+        { upsert: true }
+      );
+
+      bot.sendMessage(
+        msg.chat.id,
+        "✅ Пользователь приложения создан"
+      );
+
+      try {
+        await bot.sendMessage(
+          state.telegram_id,
+          `🎓 Доступ к приложению открыт!\n\n🔑 Ваш код доступа:\n\n<code>${tokenGen}</code>\n\nВведите его в приложении.`,
+          {
+            parse_mode: "HTML",
+          }
+        );
+      } catch { }
+
+      delete states[msg.chat.id];
+    }
   }
+  // ===== RESET TOKEN APP =====
+  if (state.action === "reset_token_app") {
 
-  if (state.step === "lessons") {
     if (!isNumber(text))
-      return bot.sendMessage(msg.chat.id, "❗ Введите число");
+      return bot.sendMessage(msg.chat.id, "❗ Введите ID");
 
-    state.lessons = Number(text);
-    state.step = "days";
+    const telegram_id = Number(text);
 
-    return bot.sendMessage(msg.chat.id, "⏳ На сколько дней?");
-  }
+    const user = await User.findOne({
+      telegram_id,
+    });
 
-  if (state.step === "days") {
+    if (!user) {
+      delete states[msg.chat.id];
+      return bot.sendMessage(
+        msg.chat.id,
+        "❌ Пользователь не найден"
+      );
+    }
 
-    const tokenGen = generateToken();
+    const newToken = generateToken();
 
-    await User.findOneAndUpdate(
-      { telegram_id: state.telegram_id },
-      {
-        telegram_id: state.telegram_id,
-        token: tokenGen,
-        lessons_available: state.lessons,
-        expires_at: new Date(
-          Date.now() + Number(text) * 86400000
-        ),
-        is_active: true,
-      },
-      { upsert: true }
-    );
+    user.token = newToken;
+
+    await user.save();
 
     bot.sendMessage(
       msg.chat.id,
-      "✅ Пользователь приложения создан"
+      "🔄 Код приложения обновлён"
     );
 
     try {
       await bot.sendMessage(
-        state.telegram_id,
-        `🎓 Доступ к приложению открыт!\n\n🔑 Ваш код доступа:\n\n<code>${tokenGen}</code>\n\nВведите его в приложении.`,
+        telegram_id,
+        `🔑 Новый код доступа:\n\n<code>${newToken}</code>\n\nВведите его в приложении.`,
         {
           parse_mode: "HTML",
         }
@@ -296,51 +340,7 @@ if (state.action === "add_user_app") {
 
     delete states[msg.chat.id];
   }
-}
-// ===== RESET TOKEN APP =====
-if (state.action === "reset_token_app") {
-
-  if (!isNumber(text))
-    return bot.sendMessage(msg.chat.id, "❗ Введите ID");
-
-  const telegram_id = Number(text);
-
-  const user = await User.findOne({
-    telegram_id,
-  });
-
-  if (!user) {
-    delete states[msg.chat.id];
-    return bot.sendMessage(
-      msg.chat.id,
-      "❌ Пользователь не найден"
-    );
-  }
-
-  const newToken = generateToken();
-
-  user.token = newToken;
-
-  await user.save();
-
-  bot.sendMessage(
-    msg.chat.id,
-    "🔄 Код приложения обновлён"
-  );
-
-  try {
-    await bot.sendMessage(
-      telegram_id,
-      `🔑 Новый код доступа:\n\n<code>${newToken}</code>\n\nВведите его в приложении.`,
-      {
-        parse_mode: "HTML",
-      }
-    );
-  } catch { }
-
-  delete states[msg.chat.id];
-}
-
+});
 // ===== СТАРТ КОМАНД =====
 
 function startAction(msg, action, question) {
