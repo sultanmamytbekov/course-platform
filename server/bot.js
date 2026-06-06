@@ -39,7 +39,10 @@ bot.setMyCommands([
   { command: "unblock", description: "✅ Разблокировать" },
   { command: "reset_token", description: "🔄 Сброс токена" },
   { command: "list_users", description: "👥 Список пользователей" },
-  { command: "cancel", description: "❌ Отмена" }
+  { command: "cancel", description: "❌ Отмена" },
+  { command: "add_user_app", description: "📱 Добавить пользователя приложения" },
+  { command: "reset_token_app", description: "📱 Сбросить код приложения" },
+  { command: "get_token", description: "🔑 Получить код приложения" },
 ]);
 
 // ❌ отмена
@@ -235,6 +238,108 @@ bot.on("message", async (msg) => {
     delete states[msg.chat.id];
   }
 });
+// ===== ADD USER APP =====
+if (state.action === "add_user_app") {
+
+  if (state.step === "id") {
+    if (!isNumber(text))
+      return bot.sendMessage(msg.chat.id, "❗ Введите число");
+
+    state.telegram_id = Number(text);
+    state.step = "lessons";
+
+    return bot.sendMessage(msg.chat.id, "📚 Сколько уроков?");
+  }
+
+  if (state.step === "lessons") {
+    if (!isNumber(text))
+      return bot.sendMessage(msg.chat.id, "❗ Введите число");
+
+    state.lessons = Number(text);
+    state.step = "days";
+
+    return bot.sendMessage(msg.chat.id, "⏳ На сколько дней?");
+  }
+
+  if (state.step === "days") {
+
+    const tokenGen = generateToken();
+
+    await User.findOneAndUpdate(
+      { telegram_id: state.telegram_id },
+      {
+        telegram_id: state.telegram_id,
+        token: tokenGen,
+        lessons_available: state.lessons,
+        expires_at: new Date(
+          Date.now() + Number(text) * 86400000
+        ),
+        is_active: true,
+      },
+      { upsert: true }
+    );
+
+    bot.sendMessage(
+      msg.chat.id,
+      "✅ Пользователь приложения создан"
+    );
+
+    try {
+      await bot.sendMessage(
+        state.telegram_id,
+        `🎓 Доступ к приложению открыт!\n\n🔑 Ваш код доступа:\n\n<code>${tokenGen}</code>\n\nВведите его в приложении.`,
+        {
+          parse_mode: "HTML",
+        }
+      );
+    } catch { }
+
+    delete states[msg.chat.id];
+  }
+}
+// ===== RESET TOKEN APP =====
+if (state.action === "reset_token_app") {
+
+  if (!isNumber(text))
+    return bot.sendMessage(msg.chat.id, "❗ Введите ID");
+
+  const telegram_id = Number(text);
+
+  const user = await User.findOne({
+    telegram_id,
+  });
+
+  if (!user) {
+    delete states[msg.chat.id];
+    return bot.sendMessage(
+      msg.chat.id,
+      "❌ Пользователь не найден"
+    );
+  }
+
+  const newToken = generateToken();
+
+  user.token = newToken;
+
+  await user.save();
+
+  bot.sendMessage(
+    msg.chat.id,
+    "🔄 Код приложения обновлён"
+  );
+
+  try {
+    await bot.sendMessage(
+      telegram_id,
+      `🔑 Новый код доступа:\n\n<code>${newToken}</code>\n\nВведите его в приложении.`,
+      {
+        parse_mode: "HTML",
+      }
+    );
+  } catch { }
+
+  delete states[msg.chat.id];
+}
 
 // ===== СТАРТ КОМАНД =====
 
@@ -293,4 +398,38 @@ bot.onText(/\/list_users/, async (msg) => {
   });
 
   bot.sendMessage(msg.chat.id, text);
+});
+
+// мобильные команды
+bot.onText(/\/get_token/, async (msg) => {
+  const telegram_id = Number(msg.chat.id);
+
+  const user = await User.findOne({ telegram_id });
+
+  if (!user || !user.token) {
+    return bot.sendMessage(
+      msg.chat.id,
+      "❌ Код доступа не найден"
+    );
+  }
+
+  bot.sendMessage(
+    msg.chat.id,
+    `🔑 Ваш код доступа:\n\n<code>${user.token}</code>\n\nВведите его в приложении.`,
+    {
+      parse_mode: "HTML",
+    }
+  );
+});
+
+bot.onText(/\/add_user_app$/, (msg) => {
+  startAction(msg, "add_user_app", "👤 Введите Telegram ID:");
+});
+
+bot.onText(/\/reset_token_app$/, (msg) => {
+  startAction(
+    msg,
+    "reset_token_app",
+    "👤 Введите Telegram ID:"
+  );
 });
