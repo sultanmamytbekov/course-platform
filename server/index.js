@@ -109,6 +109,52 @@ app.get("/check-access", async (req, res) => {
     expires_at: user.expires_at,
   });
 });
+app.post("/access/verify", async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    const user = await User.findOne({ token });
+
+    if (!user) {
+      return res.json({
+        success: false,
+        message: "Неверный код доступа",
+      });
+    }
+
+    if (!user.is_active) {
+      return res.json({
+        success: false,
+        message: "Доступ заблокирован",
+      });
+    }
+
+    if (
+      user.expires_at &&
+      new Date() > new Date(user.expires_at)
+    ) {
+      return res.json({
+        success: false,
+        message: "Срок доступа истёк",
+      });
+    }
+
+    return res.json({
+      success: true,
+      telegram_id: user.telegram_id,
+      lessons_available:
+        user.lessons_available,
+    });
+
+  } catch (error) {
+    console.log(error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Ошибка сервера",
+    });
+  }
+});
 
 app.get("/user-progress/:telegram_id", async (req, res) => {
   try {
