@@ -156,6 +156,37 @@ app.post("/access/verify", async (req, res) => {
   }
 });
 
+app.get("/user/:telegram_id", async (req, res) => {
+  try {
+    const user = await User.findOne({
+      telegram_id: Number(req.params.telegram_id),
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "Пользователь не найден",
+      });
+    }
+
+    return res.json({
+      success: true,
+      telegram_id: user.telegram_id,
+      lessons_available: user.lessons_available,
+      expires_at: user.expires_at,
+      is_active: user.is_active,
+    });
+
+  } catch (error) {
+    console.log(error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Ошибка сервера",
+    });
+  }
+});
+
 app.get("/user-progress/:telegram_id", async (req, res) => {
   try {
     let progress = await UserProgress.findOne({
