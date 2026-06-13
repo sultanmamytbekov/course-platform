@@ -200,6 +200,28 @@ app.get("/user/:telegram_id", async (req, res) => {
   }
 });
 
+app.post("/reset-device", async (req, res) => {
+  const { telegram_id } = req.body;
+
+  const user = await User.findOne({
+    telegram_id,
+  });
+
+  if (!user) {
+    return res.json({
+      success: false,
+    });
+  }
+
+  user.device_id = null;
+
+  await user.save();
+
+  res.json({
+    success: true,
+  });
+});
+
 app.get("/user-progress/:telegram_id", async (req, res) => {
   try {
     let progress = await UserProgress.findOne({

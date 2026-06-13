@@ -43,6 +43,7 @@ bot.setMyCommands([
   { command: "add_user_app", description: "📱 Добавить пользователя приложения" },
   { command: "reset_token_app", description: "📱 Сбросить код приложения" },
   { command: "get_token", description: "🔑 Получить код приложения" },
+  { command: "reset_device", description: "📱 Сбросить устройство" },
 ]);
 
 // ❌ отмена
@@ -340,6 +341,48 @@ bot.on("message", async (msg) => {
 
     delete states[msg.chat.id];
   }
+  // ===== RESET DEVICE =====
+  if (state.action === "reset_device") {
+
+    if (!isNumber(text))
+      return bot.sendMessage(
+        msg.chat.id,
+        "❗ Введите Telegram ID"
+      );
+
+    const telegram_id = Number(text);
+
+    const user = await User.findOne({
+      telegram_id,
+    });
+
+    if (!user) {
+      delete states[msg.chat.id];
+
+      return bot.sendMessage(
+        msg.chat.id,
+        "❌ Пользователь не найден"
+      );
+    }
+
+    user.device_id = null;
+
+    await user.save();
+
+    bot.sendMessage(
+      msg.chat.id,
+      "✅ Устройство отвязано"
+    );
+
+    try {
+      await bot.sendMessage(
+        telegram_id,
+        "📱 Привязка устройства сброшена. Теперь вы можете войти с нового телефона."
+      );
+    } catch { }
+
+    delete states[msg.chat.id];
+  }
 });
 // ===== СТАРТ КОМАНД =====
 
@@ -430,6 +473,14 @@ bot.onText(/\/reset_token_app$/, (msg) => {
   startAction(
     msg,
     "reset_token_app",
+    "👤 Введите Telegram ID:"
+  );
+});
+
+bot.onText(/\/reset_device$/, (msg) => {
+  startAction(
+    msg,
+    "reset_device",
     "👤 Введите Telegram ID:"
   );
 });
