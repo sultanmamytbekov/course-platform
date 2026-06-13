@@ -7,6 +7,10 @@ const userSchema = new mongoose.Schema({
   lessons_available: Number,
   ip: String,
   device: String,
+  device_id: {
+    type: String,
+    default: null,
+  },
   is_active: Boolean,
 });
 

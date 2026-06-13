@@ -9,13 +9,13 @@ const UserProgress = require("./models/UserProgress");
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log("MongoDB подключена"))
   .catch(err => console.log(err));
-  const app = express();
-  app.use(cors());
-  app.use(express.json());
-  
-  const PORT = process.env.PORT || 5000;
-  
-  app.post("/admin-login", (req, res) => {
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+const PORT = process.env.PORT || 5000;
+
+app.post("/admin-login", (req, res) => {
   const { password } = req.body;
 
   // console.log("ПРИШЕЛ ПАРОЛЬ:", password);
@@ -34,8 +34,8 @@ mongoose.connect(process.env.MONGO_URI)
 
   console.log("НЕВЕРНЫЙ ПАРОЛЬ");
   return res.json({ success: false });
-}); 
-  
+});
+
 
 app.get("/", (req, res) => {
   res.send("🚀 API работает");
@@ -47,7 +47,7 @@ app.get("/ping", (req, res) => {
 });
 
 
-  // 🔑 создать пользователя
+// 🔑 создать пользователя
 app.post("/create-user", async (req, res) => {
   const { telegram_id, lessons, days } = req.body;
 
@@ -111,7 +111,7 @@ app.get("/check-access", async (req, res) => {
 });
 app.post("/access/verify", async (req, res) => {
   try {
-    const { token } = req.body;
+    const { token, device_id } = req.body;
 
     const user = await User.findOne({ token });
 
@@ -136,6 +136,19 @@ app.post("/access/verify", async (req, res) => {
       return res.json({
         success: false,
         message: "Срок доступа истёк",
+      });
+    }
+    // первое устройство
+    if (!user.device_id) {
+      user.device_id = device_id;
+      await user.save();
+    }
+    // другое устройство
+    else if (user.device_id !== device_id) {
+      return res.json({
+        success: false,
+        message:
+          "Этот код уже используется на другом устройстве",
       });
     }
 
@@ -243,7 +256,7 @@ app.post("/save-progress", async (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log("Server started on " + PORT);
+  console.log("Server started on " + PORT);
 });
 
 app.post("/add-lessons", async (req, res) => {
