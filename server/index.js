@@ -155,8 +155,8 @@ app.post("/access/verify", async (req, res) => {
     return res.json({
       success: true,
       telegram_id: user.telegram_id,
-      lessons_available:
-        user.lessons_available,
+      lessons_available: user.lessons_available,
+      embassy_access: user.embassy_access,
     });
 
   } catch (error) {
@@ -186,6 +186,7 @@ app.get("/user/:telegram_id", async (req, res) => {
       success: true,
       telegram_id: user.telegram_id,
       lessons_available: user.lessons_available,
+      embassy_access: user.embassy_access,
       expires_at: user.expires_at,
       is_active: user.is_active,
     });

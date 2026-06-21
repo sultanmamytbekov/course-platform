@@ -5,12 +5,20 @@ const userSchema = new mongoose.Schema({
   token: String,
   expires_at: Date,
   lessons_available: Number,
+
+  embassy_access: {
+    type: Boolean,
+    default: false,
+  },
+
   ip: String,
   device: String,
+
   device_id: {
     type: String,
     default: null,
   },
+
   is_active: Boolean,
 });
 

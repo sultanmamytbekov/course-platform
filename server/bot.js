@@ -44,6 +44,7 @@ bot.setMyCommands([
   { command: "reset_token_app", description: "📱 Сбросить код приложения" },
   { command: "get_token", description: "🔑 Получить код приложения" },
   { command: "reset_device", description: "📱 Сбросить устройство" },
+  { command: "embassy_access", description: "🏛 Открыть раздел Посольство" },
 ]);
 
 // ❌ отмена
@@ -146,6 +147,50 @@ bot.on("message", async (msg) => {
       bot.sendMessage(msg.chat.id, "✅ Уроки обновлены");
       delete states[msg.chat.id];
     }
+  }
+
+  // ===== EMBASSY ACCESS =====
+
+  if (state.action === "embassy_access") {
+
+    if (!isNumber(text))
+      return bot.sendMessage(
+        msg.chat.id,
+        "❗ Введите Telegram ID"
+      );
+
+    const telegram_id = Number(text);
+
+    const user = await User.findOne({
+      telegram_id,
+    });
+
+    if (!user) {
+      delete states[msg.chat.id];
+
+      return bot.sendMessage(
+        msg.chat.id,
+        "❌ Пользователь не найден"
+      );
+    }
+
+    user.embassy_access = true;
+
+    await user.save();
+
+    bot.sendMessage(
+      msg.chat.id,
+      "✅ Доступ к разделу Посольство открыт"
+    );
+
+    try {
+      await bot.sendMessage(
+        telegram_id,
+        "🏛 Вам открыт раздел «Подготовка к посольству»."
+      );
+    } catch { }
+
+    delete states[msg.chat.id];
   }
 
   // ===== EXTEND =====
@@ -400,6 +445,14 @@ bot.onText(/\/add_user$/, (msg) => {
 
 bot.onText(/\/add_lessons$/, (msg) => {
   startAction(msg, "add_lessons", "👤 Введите Telegram ID:");
+});
+
+bot.onText(/\/embassy_access$/, (msg) => {
+  startAction(
+    msg,
+    "embassy_access",
+    "👤 Введите Telegram ID:"
+  );
 });
 
 bot.onText(/\/extend$/, (msg) => {
