@@ -5,6 +5,7 @@ const mongoose = require("mongoose");
 const User = require("./models/User");
 const Lesson = require("./models/Lesson");
 const UserProgress = require("./models/UserProgress");
+const Settings = require("./models/Settings");
 
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log("MongoDB подключена"))
@@ -18,24 +19,37 @@ const PORT = process.env.PORT || 5000;
 app.post("/admin-login", (req, res) => {
   const { password } = req.body;
 
-  // console.log("ПРИШЕЛ ПАРОЛЬ:", password);
-  // console.log("ADMIN:", process.env.ADMIN_PASSWORD);
-  // console.log("VIDEO:", process.env.VIDEO_PASSWORD);
-
   if (password === process.env.ADMIN_PASSWORD) {
     console.log("Вход в ADMIN");
-    return res.json({ success: "admin" });
+
+    return res.json({
+      success: "admin",
+    });
   }
 
   if (password === process.env.VIDEO_PASSWORD) {
     console.log("Вход в VIDEOS");
-    return res.json({ success: "videos" });
+
+    return res.json({
+      success: "videos",
+    });
+  }
+
+  // ТРЕТИЙ КОД — управление всеми видео
+  if (password === "Temirlan08") {
+    console.log("Вход в VIDEO SETTINGS");
+
+    return res.json({
+      success: "settings",
+    });
   }
 
   console.log("НЕВЕРНЫЙ ПАРОЛЬ");
-  return res.json({ success: false });
-});
 
+  return res.json({
+    success: false,
+  });
+});
 
 app.get("/", (req, res) => {
   res.send("🚀 API работает");
@@ -46,7 +60,72 @@ app.get("/ping", (req, res) => {
   res.send("pong");
 });
 
+app.get("/settings", async (req, res) => {
+  try {
+    let settings = await Settings.findOne({ name: "global" });
 
+    if (!settings) {
+      settings = await Settings.create({
+        name: "global",
+        videos_enabled: true,
+      });
+    }
+
+    res.json(settings);
+  } catch (error) {
+    console.error("Settings error:", error);
+
+    res.status(500).json({
+      error: "Ошибка получения настроек",
+    });
+  }
+});
+app.post("/settings/videos", async (req, res) => {
+  try {
+    const { password, videos_enabled } = req.body;
+
+    // Тот же третий секретный код
+    if (password !== "Temirlan08") {
+      return res.status(403).json({
+        success: false,
+        message: "Нет доступа",
+      });
+    }
+
+    if (typeof videos_enabled !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        message: "Неверное значение",
+      });
+    }
+
+    const settings = await Settings.findOneAndUpdate(
+      {
+        name: "global",
+      },
+      {
+        videos_enabled,
+      },
+      {
+        new: true,
+        upsert: true,
+        setDefaultsOnInsert: true,
+      }
+    );
+
+    return res.json({
+      success: true,
+      videos_enabled: settings.videos_enabled,
+    });
+  } catch (error) {
+    console.error("Ошибка изменения настроек:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Ошибка сервера",
+    });
+  }
+});
 // 🔑 создать пользователя
 app.post("/create-user", async (req, res) => {
   const { telegram_id, lessons, days } = req.body;
@@ -344,14 +423,39 @@ app.post("/add-lesson", async (req, res) => {
 // Получить все уроки
 app.get("/lessons", async (req, res) => {
   try {
-    const lessons = await Lesson.find().sort({ lesson_number: 1 });
-    res.json(lessons);
-  } catch (e) {
-    res.status(500).json({ error: "Ошибка сервера" });
+    let settings = await Settings.findOne({
+      name: "global",
+    });
+
+    if (!settings) {
+      settings = await Settings.create({
+        name: "global",
+        videos_enabled: true,
+      });
+    }
+
+    const lessons = await Lesson.find()
+      .sort({ lesson_number: 1 })
+      .lean();
+
+    const result = lessons.map((lesson) => ({
+      ...lesson,
+
+      // Когда видео выключены, сервер вообще не отправляет ссылку
+      video_url: settings.videos_enabled
+        ? lesson.video_url
+        : null,
+    }));
+
+    res.json(result);
+  } catch (error) {
+    console.error("Lessons error:", error);
+
+    res.status(500).json({
+      error: "Ошибка сервера",
+    });
   }
 });
-
-
 
 require("./bot");
 

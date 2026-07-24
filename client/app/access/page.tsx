@@ -16,7 +16,12 @@ export default function AccessPage() {
   const [openSection, setOpenSection] = useState<number | null>(0);
   const [currentLesson, setCurrentLesson] = useState(0);
 
+  const [videosEnabled, setVideosEnabled] = useState(true);
+  const [settingsLoading, setSettingsLoading] = useState(true);
 
+  const [openVideoSettings, setOpenVideoSettings] = useState(false);
+  const [changingVideoSettings, setChangingVideoSettings] = useState(false);
+  const [settingsMessage, setSettingsMessage] = useState("");
   // 📡 загрузка курса
   useEffect(() => {
     const token = new URLSearchParams(window.location.search).get("token");
@@ -37,7 +42,23 @@ export default function AccessPage() {
       .finally(() => setLoading(false));
 
   }, []);
-
+  useEffect(() => {
+    fetch(
+      "https://course-platform-api-9hcf.onrender.com/settings"
+    )
+      .then((res) => res.json())
+      .then((result) => {
+        setVideosEnabled(
+          result.videos_enabled === true
+        );
+      })
+      .catch(() => {
+        setVideosEnabled(false);
+      })
+      .finally(() => {
+        setSettingsLoading(false);
+      });
+  }, []);
   // 🔥 hotkey
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -52,26 +73,93 @@ export default function AccessPage() {
   }, []);
 
   const check = async () => {
-    const res = await fetch("https://course-platform-api-9hcf.onrender.com/admin-login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password }),
-    });
+    try {
+      setSettingsMessage("");
 
-    const result = await res.json();
-    if (result.success === "admin") {
-      localStorage.setItem("admin", "true");
-      window.location.href = "/admin";
+      const res = await fetch(
+        "https://course-platform-api-9hcf.onrender.com/admin-login",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            password,
+          }),
+        }
+      );
+
+      const result = await res.json();
+      console.log("Ответ admin-login:", result);
+      if (result.success === "admin") {
+        localStorage.setItem("admin", "true");
+        window.location.href = "/admin";
+        return;
+      }
+
+      if (result.success === "videos") {
+        localStorage.setItem("videos", "true");
+        window.location.href = "/admin/videos";
+        return;
+      }
+
+      if (result.success === "settings") {
+        setOpenAdmin(false);
+        setOpenVideoSettings(true);
+        setSettingsMessage("");
+        return;
+      }
+
+      setSettingsMessage("Неверный пароль");
+    } catch (error) {
+      setSettingsMessage("Ошибка подключения к серверу");
     }
-
-
-    if (result.success === "videos") {
-      localStorage.setItem("videos", "true");
-      window.location.href = "/admin/videos";
-    }
-
   };
+  const changeVideosEnabled = async () => {
+    if (changingVideoSettings) return;
 
+    const newValue = !videosEnabled;
+
+    try {
+      setChangingVideoSettings(true);
+      setSettingsMessage("");
+
+      const res = await fetch(
+        "https://course-platform-api-9hcf.onrender.com/settings/videos",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            password,
+            videos_enabled: newValue,
+          }),
+        }
+      );
+
+      const result = await res.json();
+
+      if (!res.ok || !result.success) {
+        setSettingsMessage(
+          result.message || "Не удалось изменить настройку"
+        );
+        return;
+      }
+
+      setVideosEnabled(result.videos_enabled);
+
+      setSettingsMessage(
+        result.videos_enabled
+          ? "Все видео включены"
+          : "Все видео выключены"
+      );
+    } catch (error) {
+      setSettingsMessage("Ошибка соединения с сервером");
+    } finally {
+      setChangingVideoSettings(false);
+    }
+  };
   // 📚 данные уроков (пример)
   const [lessonsData, setLessonsData] = useState<any>({});
   // const lessonsData: Record<number, { title: string; video: string }> = {
@@ -178,7 +266,7 @@ export default function AccessPage() {
   return (<div className="bg-gray-100 min-h-screen">
 
     {/* 🔐 ADMIN */}
-    {openAdmin && (
+    {openAdmin && ( 
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
         <div className="bg-white w-[360px] rounded-2xl shadow-2xl p-6">
           <h2 className="text-xl font-semibold mb-2 text-black">Admin Access</h2>
@@ -186,8 +274,17 @@ export default function AccessPage() {
           <input
             type="password"
             placeholder="Password"
-            className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-blue-500 text-gray-800"
-            onChange={(e) => setPassword(e.target.value)}
+            value={password}
+            className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-blue-500 text-gray-800 outline-none"
+            onChange={(e) => {
+              setPassword(e.target.value);
+              setSettingsMessage("");
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                check();
+              }
+            }}
           />
 
           <button
@@ -196,7 +293,6 @@ export default function AccessPage() {
           >
             Sign in
           </button>
-
           <button
             className="w-full mt-2 text-sm text-gray-500"
             onClick={() => setOpenAdmin(false)}
@@ -206,7 +302,104 @@ export default function AccessPage() {
         </div>
       </div>
     )}
+    {/* УПРАВЛЕНИЕ ВСЕМИ ВИДЕО */}
+    {openVideoSettings && (
+      <div
+        className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50 p-3 backdrop-blur-sm sm:items-center"
+        onClick={() => {
+          if (!changingVideoSettings) {
+            setOpenVideoSettings(false);
+            setPassword("");
+            setSettingsMessage("");
+          }
+        }}
+      >
+        <div
+          className="w-full max-w-[390px] rounded-[28px] bg-white p-6 shadow-2xl sm:p-7"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Полоска сверху для телефона */}
+          <div className="mx-auto mb-5 h-1.5 w-12 rounded-full bg-gray-200 sm:hidden" />
 
+          <div className="mb-6">
+            <h2 className="text-[22px] font-bold text-gray-900">
+              Управление видео
+            </h2>
+
+            <p className="mt-2 text-sm leading-5 text-gray-500">
+              Включает или выключает все видео сразу для всех пользователей.
+            </p>
+          </div>
+
+          <div className="flex items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-5 py-5">
+            <div className="pr-4">
+              <p className="font-semibold text-gray-900">
+                Доступ к видео
+              </p>
+
+              <p
+                className={`mt-1 text-sm font-medium transition-colors duration-300 ${videosEnabled
+                    ? "text-green-600"
+                    : "text-red-500"
+                  }`}
+              >
+                {videosEnabled
+                  ? "Видео включены"
+                  : "Видео выключены"}
+              </p>
+            </div>
+
+            {/* ВЕРТИКАЛЬНЫЙ ПЕРЕКЛЮЧАТЕЛЬ */}
+            <button
+              type="button"
+              disabled={changingVideoSettings || settingsLoading}
+              onClick={changeVideosEnabled}
+              className={`relative h-[88px] w-[48px] shrink-0 rounded-full p-1.5 shadow-inner transition-all duration-300 active:scale-95 disabled:opacity-60 ${videosEnabled
+                  ? "bg-green-500"
+                  : "bg-gray-300"
+                }`}
+            >
+              <span
+                className={`absolute left-1.5 flex h-9 w-9 items-center justify-center rounded-full bg-white shadow-md transition-all duration-300 ease-out ${videosEnabled
+                    ? "top-1.5"
+                    : "top-[46px]"
+                  }`}
+              >
+                {changingVideoSettings ? (
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-700" />
+                ) : (
+                  <span
+                    className={`h-2.5 w-2.5 rounded-full transition-colors duration-300 ${videosEnabled
+                        ? "bg-green-500"
+                        : "bg-gray-400"
+                      }`}
+                  />
+                )}
+              </span>
+            </button>
+          </div>
+
+          {settingsMessage && (
+            <div className="mt-4 rounded-xl bg-blue-50 px-4 py-3 text-center text-sm font-medium text-blue-600">
+              {settingsMessage}
+            </div>
+          )}
+
+          <button
+            type="button"
+            disabled={changingVideoSettings}
+            onClick={() => {
+              setOpenVideoSettings(false);
+              setPassword("");
+              setSettingsMessage("");
+            }}
+            className="mt-6 w-full rounded-2xl bg-gray-900 py-3.5 font-semibold text-white transition active:scale-[0.98] disabled:opacity-60"
+          >
+            Закрыть
+          </button>
+        </div>
+      </div>
+    )}
     <div className="max-w-5xl mx-auto p-6">
 
       {/* HEADER */}
@@ -240,36 +433,6 @@ export default function AccessPage() {
           </span>
         </div>
       </div>
-
-      {/* 🎥 VIDEO */}
-      {/* <div className="bg-white rounded-2xl shadow-xl overflow-hidden mb-8 relative">
-
-        {loading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-10">
-            <div className="flex flex-col items-center gap-3">
-
-              <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-
-              <p className="text-sm text-gray-500">Загрузка видео...</p>
-            </div>
-          </div>
-        )}
-
-        <iframe
-          key={currentLesson}
-          className="w-full h-[420px]"
-          src={lessonsData[currentLesson]?.video}
-          allow="autoplay; fullscreen"
-          onLoad={() => setLoading(false)}
-        />
-
-        <div className="p-4 border-t">
-          <h3 className="text-lg font-semibold text-black">
-            Урок {currentLesson}:{" "}
-            {lessonsData[currentLesson]?.title || "Урок"}
-          </h3>
-        </div>
-      </div> */}
       <div className="bg-white rounded-2xl shadow-xl overflow-hidden mb-8 relative">
 
         {/* ⏳ LOADING */}
@@ -304,19 +467,6 @@ export default function AccessPage() {
             </button>
           </div>
         )}
-
-        {/* 🎥 VIDEO */}
-        {/* <iframe
-          key={currentLesson}
-          className="w-full h-[420px]"
-          src={lessonsData[currentLesson]?.video}
-          allow="autoplay; fullscreen"
-          onLoad={() => setLoading(false)}
-          onError={() => {
-            setVideoError(true);
-            setLoading(false);
-          }}
-        /> */}
         <div className="absolute top-2 left-2 text-white text-xs opacity-70 pointer-events-none z-20">
           ID: {data?.telegram_id || "USER"}
         </div>
@@ -324,20 +474,28 @@ export default function AccessPage() {
           style={{ top: Math.random() * 300, left: Math.random() * 600 }}>
           {data?.telegram_id}
         </div>
-        <iframe
-          loading="lazy"
-          key={currentLesson}
-          className="w-full h-[420px]"
-          src={lessonsData[currentLesson]?.video}
-          allowFullScreen
-          // allow="autoplay; fullscreen"
-          allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;"
-          onLoad={() => setLoading(false)}
-          onError={() => {
-            setVideoError(true);
-            setLoading(false);
-          }}
-        />
+        {videosEnabled &&
+          lessonsData[currentLesson]?.video ? (
+          <iframe
+            loading="lazy"
+            key={currentLesson}
+            className="w-full h-[420px]"
+            src={lessonsData[currentLesson]?.video}
+            allowFullScreen
+            allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;"
+            onLoad={() => setLoading(false)}
+            onError={() => {
+              setVideoError(true);
+              setLoading(false);
+            }}
+          />
+        ) : (
+          <div className="w-full h-[420px] flex items-center justify-center bg-gray-100">
+            <p className="text-gray-500 text-lg">
+              Видео временно недоступны
+            </p>
+          </div>
+        )}
         {/* TITLE */}
         <div className="p-4 border-t">
           <h3 className="text-lg font-semibold text-black">
@@ -375,7 +533,7 @@ export default function AccessPage() {
                 {lessons.map((lesson) => {
                   const isOpen = lesson === 0 || lesson <= data.lessons_available;
                   const exists = lessonsData[lesson];
-                    
+
                   return (
                     <div
                       key={lesson}
