@@ -2,6 +2,8 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 const User = require("./models/User");
 const Lesson = require("./models/Lesson");
 const UserProgress = require("./models/UserProgress");
@@ -247,7 +249,243 @@ app.post("/access/verify", async (req, res) => {
     });
   }
 });
+// ===== APP LOGIN ===== 
+app.post("/app/login", async (req, res) => {
+  try {
+    const {
+      email,
+      password,
+      device_id,
+    } = req.body;
 
+    // Проверка данных
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Введите email и пароль",
+      });
+    }
+
+    const normalizedEmail =
+      email.trim().toLowerCase();
+
+    // Ищем пользователя
+    const user = await User.findOne({
+      email: normalizedEmail,
+    });
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "Неверный email или пароль",
+      });
+    }
+
+    // Есть ли пароль у пользователя
+    if (!user.password_hash) {
+      return res.status(401).json({
+        success: false,
+        message: "Неверный email или пароль",
+      });
+    }
+
+    // Проверяем пароль
+    const passwordCorrect =
+      await bcrypt.compare(
+        password,
+        user.password_hash
+      );
+
+    if (!passwordCorrect) {
+      return res.status(401).json({
+        success: false,
+        message: "Неверный email или пароль",
+      });
+    }
+
+    // Разрешён ли доступ к приложению
+    if (!user.app_access) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "Для этого аккаунта доступ к приложению не открыт",
+      });
+    }
+
+    // Заблокирован ли пользователь
+    if (!user.is_active) {
+      return res.status(403).json({
+        success: false,
+        message: "Ваш аккаунт заблокирован",
+      });
+    }
+
+    // Проверяем срок
+    if (
+      user.expires_at &&
+      new Date() > new Date(user.expires_at)
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "Срок доступа истёк",
+      });
+    }
+
+    // Проверяем устройство
+    if (device_id) {
+      // Первый вход
+      if (!user.device_id) {
+        user.device_id = device_id;
+        await user.save();
+      }
+
+      // Попытка входа с другого устройства
+      else if (user.device_id !== device_id) {
+        return res.status(403).json({
+          success: false,
+          message:
+            "Этот аккаунт уже используется на другом устройстве. Обратитесь к администратору.",
+        });
+      }
+    }
+
+    // Создаём JWT
+    const accessToken = jwt.sign(
+      {
+        user_id: user._id.toString(),
+        telegram_id: user.telegram_id,
+      },
+      process.env.JWT_SECRET,
+      {
+        expiresIn: "30d",
+      }
+    );
+
+    return res.json({
+      success: true,
+
+      access_token: accessToken,
+
+      user: {
+        id: user._id,
+        telegram_id: user.telegram_id,
+        name: user.name,
+        email: user.email,
+        lessons_available:
+          user.lessons_available,
+        expires_at: user.expires_at,
+        embassy_access:
+          user.embassy_access,
+        is_active: user.is_active,
+      },
+    });
+  } catch (error) {
+    console.error(
+      "APP LOGIN ERROR:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Ошибка сервера",
+    });
+  }
+});
+// ===== APP ME =====
+app.get("/app/me", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (
+      !authHeader ||
+      !authHeader.startsWith("Bearer ")
+    ) {
+      return res.status(401).json({
+        success: false,
+        message: "Нет токена авторизации",
+      });
+    }
+
+    const token = authHeader.split(" ")[1];
+
+    let decoded;
+
+    try {
+      decoded = jwt.verify(
+        token,
+        process.env.JWT_SECRET
+      );
+    } catch (error) {
+      return res.status(401).json({
+        success: false,
+        message: "Сессия недействительна",
+      });
+    }
+
+    const user = await User.findById(
+      decoded.user_id
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "Пользователь не найден",
+      });
+    }
+
+    if (!user.app_access) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "Доступ к приложению отключён",
+      });
+    }
+
+    if (!user.is_active) {
+      return res.status(403).json({
+        success: false,
+        message: "Аккаунт заблокирован",
+      });
+    }
+
+    if (
+      user.expires_at &&
+      new Date() > new Date(user.expires_at)
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "Срок доступа истёк",
+      });
+    }
+
+    return res.json({
+      success: true,
+
+      user: {
+        id: user._id,
+        telegram_id: user.telegram_id,
+        name: user.name,
+        email: user.email,
+        lessons_available:
+          user.lessons_available,
+        expires_at: user.expires_at,
+        embassy_access:
+          user.embassy_access,
+        is_active: user.is_active,
+      },
+    });
+  } catch (error) {
+    console.error(
+      "APP ME ERROR:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Ошибка сервера",
+    });
+  }
+});
 app.get("/user/:telegram_id", async (req, res) => {
   try {
     const user = await User.findOne({
@@ -356,7 +594,195 @@ app.post("/save-progress", async (req, res) => {
     });
   }
 });
+// ===== APP USER PROGRESS =====
+app.get("/app/progress", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
 
+    if (
+      !authHeader ||
+      !authHeader.startsWith("Bearer ")
+    ) {
+      return res.status(401).json({
+        success: false,
+        message: "Нет авторизации",
+      });
+    }
+
+    const token = authHeader.split(" ")[1];
+
+    let decoded;
+
+    try {
+      decoded = jwt.verify(
+        token,
+        process.env.JWT_SECRET
+      );
+    } catch (error) {
+      return res.status(401).json({
+        success: false,
+        message: "Сессия недействительна",
+      });
+    }
+
+    const user = await User.findById(
+      decoded.user_id
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "Пользователь не найден",
+      });
+    }
+
+    if (!user.app_access || !user.is_active) {
+      return res.status(403).json({
+        success: false,
+        message: "Нет доступа",
+      });
+    }
+
+    if (
+      user.expires_at &&
+      new Date() > new Date(user.expires_at)
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "Срок доступа истёк",
+      });
+    }
+
+    let progress = await UserProgress.findOne({
+      telegram_id: user.telegram_id,
+    });
+
+    if (!progress) {
+      progress = await UserProgress.create({
+        telegram_id: user.telegram_id,
+      });
+    }
+
+    return res.json({
+      success: true,
+      progress,
+    });
+  } catch (error) {
+    console.error(
+      "APP PROGRESS ERROR:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Ошибка сервера",
+    });
+  }
+});
+
+
+// ===== APP SAVE PROGRESS =====
+app.post("/app/progress", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (
+      !authHeader ||
+      !authHeader.startsWith("Bearer ")
+    ) {
+      return res.status(401).json({
+        success: false,
+        message: "Нет авторизации",
+      });
+    }
+
+    const token = authHeader.split(" ")[1];
+
+    let decoded;
+
+    try {
+      decoded = jwt.verify(
+        token,
+        process.env.JWT_SECRET
+      );
+    } catch (error) {
+      return res.status(401).json({
+        success: false,
+        message: "Сессия недействительна",
+      });
+    }
+
+    const user = await User.findById(
+      decoded.user_id
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "Пользователь не найден",
+      });
+    }
+
+    if (!user.app_access || !user.is_active) {
+      return res.status(403).json({
+        success: false,
+        message: "Нет доступа",
+      });
+    }
+
+    if (
+      user.expires_at &&
+      new Date() > new Date(user.expires_at)
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "Срок доступа истёк",
+      });
+    }
+
+    const {
+      favorites = [],
+      bookmarks = [],
+      watched_lessons = [],
+      last_lesson = null,
+    } = req.body;
+
+    const progress =
+      await UserProgress.findOneAndUpdate(
+        {
+          telegram_id: user.telegram_id,
+        },
+        {
+          $set: {
+            favorites,
+            bookmarks,
+            watched_lessons,
+            last_lesson,
+          },
+        },
+        {
+          upsert: true,
+          new: true,
+          setDefaultsOnInsert: true,
+        }
+      );
+
+    return res.json({
+      success: true,
+      progress,
+    });
+  } catch (error) {
+    console.error(
+      "APP SAVE PROGRESS ERROR:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Ошибка сервера",
+    });
+  }
+});
 app.listen(PORT, () => {
   console.log("Server started on " + PORT);
 });
@@ -453,6 +879,110 @@ app.get("/lessons", async (req, res) => {
 
     res.status(500).json({
       error: "Ошибка сервера",
+    });
+  }
+});
+// ===== APP LESSONS =====
+app.get("/app/lessons", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (
+      !authHeader ||
+      !authHeader.startsWith("Bearer ")
+    ) {
+      return res.status(401).json({
+        success: false,
+        message: "Нет авторизации",
+      });
+    }
+
+    const token = authHeader.split(" ")[1];
+
+    let decoded;
+
+    try {
+      decoded = jwt.verify(
+        token,
+        process.env.JWT_SECRET
+      );
+    } catch (error) {
+      return res.status(401).json({
+        success: false,
+        message: "Сессия недействительна",
+      });
+    }
+
+    const user = await User.findById(
+      decoded.user_id
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "Пользователь не найден",
+      });
+    }
+
+    if (!user.app_access || !user.is_active) {
+      return res.status(403).json({
+        success: false,
+        message: "Нет доступа",
+      });
+    }
+
+    if (
+      user.expires_at &&
+      new Date() > new Date(user.expires_at)
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "Срок доступа истёк",
+      });
+    }
+
+    let settings = await Settings.findOne({
+      name: "global",
+    });
+
+    if (!settings) {
+      settings = await Settings.create({
+        name: "global",
+        videos_enabled: true,
+      });
+    }
+
+    const lessons = await Lesson.find()
+      .sort({ lesson_number: 1 })
+      .lean();
+
+    // Отдаем только доступное пользователю количество уроков
+    const availableLessons = lessons.filter(
+      (lesson) =>
+        lesson.lesson_number <=
+        user.lessons_available
+    );
+
+    const result = availableLessons.map(
+      (lesson) => ({
+        ...lesson,
+
+        video_url: settings.videos_enabled
+          ? lesson.video_url
+          : null,
+      })
+    );
+
+    return res.json(result);
+  } catch (error) {
+    console.error(
+      "APP LESSONS ERROR:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Ошибка сервера",
     });
   }
 });

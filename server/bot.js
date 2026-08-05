@@ -2,7 +2,7 @@ const TelegramBot = require("node-telegram-bot-api");
 require("dotenv").config();
 const mongoose = require("mongoose");
 const crypto = require("crypto");
-
+const bcrypt = require("bcryptjs");
 const token = process.env.BOT_TOKEN;
 
 if (!token) {
@@ -286,61 +286,240 @@ bot.on("message", async (msg) => {
 
   // ===== ADD USER APP =====
   if (state.action === "add_user_app") {
-
+    // 1. Telegram ID
     if (state.step === "id") {
-      if (!isNumber(text))
-        return bot.sendMessage(msg.chat.id, "❗ Введите число");
+      if (!isNumber(text)) {
+        return bot.sendMessage(
+          msg.chat.id,
+          "❗ Введите корректный Telegram ID"
+        );
+      }
 
       state.telegram_id = Number(text);
-      state.step = "lessons";
+      state.step = "name";
 
-      return bot.sendMessage(msg.chat.id, "📚 Сколько уроков?");
+      return bot.sendMessage(
+        msg.chat.id,
+        "👤 Введите имя ученика:"
+      );
     }
 
+    // 2. Имя
+    if (state.step === "name") {
+      const name = text?.trim();
+
+      if (!name || name.length < 2) {
+        return bot.sendMessage(
+          msg.chat.id,
+          "❗ Введите корректное имя"
+        );
+      }
+
+      state.name = name;
+      state.step = "email";
+
+      return bot.sendMessage(
+        msg.chat.id,
+        "📧 Введите email ученика:"
+      );
+    }
+
+    // 3. Email
+    if (state.step === "email") {
+      const email = text?.trim().toLowerCase();
+
+      const emailRegex =
+        /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+      if (!emailRegex.test(email)) {
+        return bot.sendMessage(
+          msg.chat.id,
+          "❗ Введите корректный email"
+        );
+      }
+
+      // Проверяем, не занят ли email другим пользователем
+      const existingEmailUser =
+        await User.findOne({ email });
+
+      if (
+        existingEmailUser &&
+        existingEmailUser.telegram_id !==
+        state.telegram_id
+      ) {
+        return bot.sendMessage(
+          msg.chat.id,
+          "❌ Этот email уже используется другим пользователем"
+        );
+      }
+
+      state.email = email;
+      state.step = "password";
+
+      return bot.sendMessage(
+        msg.chat.id,
+        "🔑 Введите временный пароль ученика:\n\nМинимум 8 символов."
+      );
+    }
+
+    // 4. Пароль
+    if (state.step === "password") {
+      const password = text?.trim();
+
+      if (!password || password.length < 8) {
+        return bot.sendMessage(
+          msg.chat.id,
+          "❗ Пароль должен содержать минимум 8 символов"
+        );
+      }
+
+      state.password = password;
+      state.step = "lessons";
+
+      return bot.sendMessage(
+        msg.chat.id,
+        "📚 Сколько уроков открыть?"
+      );
+    }
+
+    // 5. Уроки
     if (state.step === "lessons") {
-      if (!isNumber(text))
-        return bot.sendMessage(msg.chat.id, "❗ Введите число");
+      if (
+        !isNumber(text) ||
+        Number(text) < 0
+      ) {
+        return bot.sendMessage(
+          msg.chat.id,
+          "❗ Введите корректное количество уроков"
+        );
+      }
 
       state.lessons = Number(text);
       state.step = "days";
 
-      return bot.sendMessage(msg.chat.id, "⏳ На сколько дней?");
+      return bot.sendMessage(
+        msg.chat.id,
+        "⏳ На сколько дней предоставить доступ?"
+      );
     }
 
+    // 6. Срок доступа + создание пользователя
     if (state.step === "days") {
-
-      const tokenGen = generateToken();
-
-      await User.findOneAndUpdate(
-        { telegram_id: state.telegram_id },
-        {
-          telegram_id: state.telegram_id,
-          token: tokenGen,
-          lessons_available: state.lessons,
-          expires_at: new Date(
-            Date.now() + Number(text) * 86400000
-          ),
-          is_active: true,
-        },
-        { upsert: true }
-      );
-
-      bot.sendMessage(
-        msg.chat.id,
-        "✅ Пользователь приложения создан"
-      );
+      if (
+        !isNumber(text) ||
+        Number(text) <= 0
+      ) {
+        return bot.sendMessage(
+          msg.chat.id,
+          "❗ Введите корректное количество дней"
+        );
+      }
 
       try {
+        const passwordHash =
+          await bcrypt.hash(
+            state.password,
+            12
+          );
+
+        const expiresAt = new Date(
+          Date.now() +
+          Number(text) * 86400000
+        );
+
+        const user =
+          await User.findOneAndUpdate(
+            {
+              telegram_id:
+                state.telegram_id,
+            },
+            {
+              $set: {
+                telegram_id:
+                  state.telegram_id,
+
+                name: state.name,
+
+                email: state.email,
+
+                password_hash:
+                  passwordHash,
+
+                app_access: true,
+
+                lessons_available:
+                  state.lessons,
+
+                expires_at:
+                  expiresAt,
+
+                is_active: true,
+
+                // При повторном создании/выдаче
+                // разрешаем привязать устройство заново
+                device_id: null,
+              },
+            },
+            {
+              upsert: true,
+              new: true,
+              setDefaultsOnInsert: true,
+            }
+          );
+
         await bot.sendMessage(
-          state.telegram_id,
-          `🎓 Доступ к приложению открыт!\n\n🔑 Ваш код доступа:\n\n<code>${tokenGen}</code>\n\nВведите его в приложении.`,
+          msg.chat.id,
+          `✅ Пользователь приложения создан
+
+👤 Имя: ${user.name}
+📧 Email: ${user.email}
+📚 Уроков: ${user.lessons_available}
+📅 Доступ до: ${expiresAt.toLocaleDateString()}
+
+🔑 Временный пароль:
+<code>${state.password}</code>`,
           {
             parse_mode: "HTML",
           }
         );
-      } catch { }
 
-      delete states[msg.chat.id];
+        try {
+          await bot.sendMessage(
+            state.telegram_id,
+            `🎓 Вам открыт доступ к приложению Step to Korea.
+
+📧 Email:
+<code>${state.email}</code>
+
+🔑 Временный пароль:
+<code>${state.password}</code>
+
+Используйте эти данные для входа в приложение.`,
+            {
+              parse_mode: "HTML",
+            }
+          );
+        } catch (error) {
+          console.log(
+            "Не удалось отправить данные ученику:",
+            error.message
+          );
+        }
+
+        delete states[msg.chat.id];
+      } catch (error) {
+        console.log(
+          "ADD USER APP ERROR:",
+          error
+        );
+
+        bot.sendMessage(
+          msg.chat.id,
+          "❌ Ошибка при создании пользователя"
+        );
+
+        delete states[msg.chat.id];
+      }
     }
   }
   // ===== RESET TOKEN APP =====
