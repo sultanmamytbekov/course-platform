@@ -97,32 +97,92 @@ bot.on("message", async (msg) => {
     }
 
     if (state.step === "days") {
-      if (!isNumber(text)) return bot.sendMessage(msg.chat.id, "❗ Введите число");
-
-      const tokenGen = generateToken();
-      const link = `https://course-platform-alpha-three.vercel.app/access?token=${tokenGen}`;
-
-      await User.findOneAndUpdate(
-        { telegram_id: state.telegram_id },
-        {
-          telegram_id: state.telegram_id,
-          token: tokenGen,
-          lessons_available: state.lessons,
-          expires_at: new Date(Date.now() + Number(text) * 86400000),
-          is_active: true,
-        },
-        { upsert: true }
-      );
-
-      bot.sendMessage(msg.chat.id, "✅ Пользователь создан");
-      try {
-        await bot.sendMessage(
-          state.telegram_id,
-          `🎓 Ваш доступ открыт!\n\n📌 Чтобы всё работало правильно:\nЗажмите ссылку и выберите “Открыть в браузере” (Chrome / Safari).\n\n${link}`
+      if (!isNumber(text) || Number(text) <= 0) {
+        return bot.sendMessage(
+          msg.chat.id,
+          "❗ Введите корректное количество дней"
         );
-      } catch { }
+      }
 
-      delete states[msg.chat.id];
+      try {
+        const tokenGen = generateToken();
+
+        const link =
+          `https://course-platform-alpha-three.vercel.app/access?token=${tokenGen}`;
+
+        const expiresAt = new Date(
+          Date.now() + Number(text) * 86400000
+        );
+
+        const user = await User.findOneAndUpdate(
+          {
+            telegram_id: state.telegram_id,
+          },
+          {
+            $set: {
+              telegram_id: state.telegram_id,
+              token: tokenGen,
+              lessons_available: state.lessons,
+              expires_at: expiresAt,
+              is_active: true,
+
+              // Сбрасываем только привязку сайта
+              ip: null,
+              device: null,
+            },
+          },
+          {
+            upsert: true,
+            returnDocument: "after",
+            setDefaultsOnInsert: true,
+          }
+        );
+
+        await bot.sendMessage(
+          msg.chat.id,
+          `✅ Пользователь сайта создан
+
+👤 Telegram ID: ${user.telegram_id}
+📚 Уроков: ${user.lessons_available}
+📅 Доступ до: ${expiresAt.toLocaleDateString()}
+
+🔗 Ссылка:
+${link}`
+        );
+
+        try {
+          await bot.sendMessage(
+            state.telegram_id,
+            `🎓 Ваш доступ открыт!
+
+📌 Чтобы всё работало правильно:
+Зажмите ссылку и выберите «Открыть в браузере» (Chrome / Safari).
+
+${link}`
+          );
+        } catch (sendError) {
+          console.log(
+            "Не удалось отправить ссылку пользователю:",
+            sendError.message
+          );
+        }
+
+        delete states[msg.chat.id];
+      } catch (error) {
+        console.error(
+          "ADD USER WEBSITE ERROR:",
+          error
+        );
+
+        await bot.sendMessage(
+          msg.chat.id,
+          `❌ Ошибка создания пользователя сайта:
+
+${error.message}`
+        );
+
+        delete states[msg.chat.id];
+      }
     }
   }
 
