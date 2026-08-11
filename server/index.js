@@ -332,15 +332,11 @@ app.post("/app/login", async (req, res) => {
     }
 
     // Проверяем устройство
-    if (device_id) {
-      // Первый вход
+    if (!user.multi_device_access && device_id) {
       if (!user.device_id) {
         user.device_id = device_id;
         await user.save();
-      }
-
-      // Попытка входа с другого устройства
-      else if (user.device_id !== device_id) {
+      } else if (user.device_id !== device_id) {
         return res.status(403).json({
           success: false,
           message:

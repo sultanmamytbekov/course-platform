@@ -36,7 +36,10 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-
+    multi_device_access: {
+      type: Boolean,
+      default: false,
+    },
     // Старый token пока НЕ удаляем.
     // Он нужен, чтобы старая веб-система пока не сломалась.
     token: {
