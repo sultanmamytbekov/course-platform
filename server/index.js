@@ -249,6 +249,131 @@ app.post("/access/verify", async (req, res) => {
     });
   }
 });
+// ===== APP REGISTER =====
+app.post("/app/register", async (req, res) => {
+  try {
+    const {
+      name,
+      phone,
+      email,
+      password,
+    } = req.body;
+
+    // Проверяем обязательные поля
+    if (!name || !phone || !email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Заполните все поля",
+      });
+    }
+
+    const normalizedEmail =
+      email.trim().toLowerCase();
+
+    const normalizedName =
+      name.trim();
+
+    const normalizedPhone =
+      phone.trim();
+
+    // Простая проверка email
+    if (
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+        normalizedEmail
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Введите корректный email",
+      });
+    }
+
+    // Минимальная длина пароля
+    if (password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Пароль должен содержать минимум 6 символов",
+      });
+    }
+
+    // Проверяем, существует ли такой email
+    const existingUser = await User.findOne({
+      email: normalizedEmail,
+    });
+
+    if (existingUser) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "Аккаунт с таким email уже существует",
+      });
+    }
+
+    // Хэшируем пароль
+    const passwordHash =
+      await bcrypt.hash(password, 12);
+
+    // Создаём аккаунт без доступа.
+    // Доступ позже выдаст администратор.
+    const user = await User.create({
+      name: normalizedName,
+      phone: normalizedPhone,
+      email: normalizedEmail,
+
+      password_hash: passwordHash,
+
+      telegram_id: null,
+
+      app_access: false,
+      is_active: false,
+      is_verified: false,
+
+      lessons_available: 0,
+      expires_at: null,
+      embassy_access: false,
+
+      device_id: null,
+      multi_device_access: false,
+
+      verification_code: null,
+      verification_code_expires_at: null,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message:
+        "Регистрация успешна. Ожидайте подтверждения администратора.",
+
+      user: {
+        id: user._id,
+        name: user.name,
+        phone: user.phone,
+        email: user.email,
+        is_verified: user.is_verified,
+      },
+    });
+  } catch (error) {
+    console.error(
+      "APP REGISTER ERROR:",
+      error
+    );
+
+    // На случай ошибки unique index MongoDB
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "Аккаунт с таким email уже существует",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Ошибка сервера",
+    });
+  }
+});
 // ===== APP LOGIN ===== 
 app.post("/app/login", async (req, res) => {
   try {

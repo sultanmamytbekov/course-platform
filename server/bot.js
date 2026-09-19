@@ -346,45 +346,8 @@ ${error.message}`
 
   // ===== ADD USER APP =====
   if (state.action === "add_user_app") {
-    // 1. Telegram ID
-    if (state.step === "id") {
-      if (!isNumber(text)) {
-        return bot.sendMessage(
-          msg.chat.id,
-          "❗ Введите корректный Telegram ID"
-        );
-      }
 
-      state.telegram_id = Number(text);
-      state.step = "name";
-
-      return bot.sendMessage(
-        msg.chat.id,
-        "👤 Введите имя ученика:"
-      );
-    }
-
-    // 2. Имя
-    if (state.step === "name") {
-      const name = text?.trim();
-
-      if (!name || name.length < 2) {
-        return bot.sendMessage(
-          msg.chat.id,
-          "❗ Введите корректное имя"
-        );
-      }
-
-      state.name = name;
-      state.step = "email";
-
-      return bot.sendMessage(
-        msg.chat.id,
-        "📧 Введите email ученика:"
-      );
-    }
-
-    // 3. Email
+    // 1. Email зарегистрированного пользователя
     if (state.step === "email") {
       const email = text?.trim().toLowerCase();
 
@@ -398,42 +361,84 @@ ${error.message}`
         );
       }
 
-      // Проверяем, не занят ли email другим пользователем
-      const existingEmailUser =
-        await User.findOne({ email });
+      const user = await User.findOne({
+        email,
+      });
 
-      if (
-        existingEmailUser &&
-        existingEmailUser.telegram_id !==
-        state.telegram_id
-      ) {
+      if (!user) {
         return bot.sendMessage(
           msg.chat.id,
-          "❌ Этот email уже используется другим пользователем"
+          `❌ Пользователь с email ${email} не найден.
+
+Сначала ученик должен зарегистрироваться в приложении.`
         );
       }
 
-      state.email = email;
-      state.step = "password";
+      if (user.is_verified) {
+        return bot.sendMessage(
+          msg.chat.id,
+          "❌ Этот аккаунт уже подтверждён."
+        );
+      }
+
+      state.user_id = user._id.toString();
+      state.email = user.email;
+      state.name = user.name;
+      state.phone = user.phone;
+
+      state.step = "id";
 
       return bot.sendMessage(
         msg.chat.id,
-        "🔑 Введите временный пароль ученика:\n\nМинимум 8 символов."
+        `👤 Пользователь найден:
+
+Имя: ${user.name}
+📞 Телефон: ${user.phone || "не указан"}
+📧 Email: ${user.email}
+
+Теперь введите Telegram ID ученика:`
       );
     }
 
-    // 4. Пароль
-    if (state.step === "password") {
-      const password = text?.trim();
-
-      if (!password || password.length < 8) {
+    // 2. Telegram ID
+    if (state.step === "id") {
+      if (!isNumber(text)) {
         return bot.sendMessage(
           msg.chat.id,
-          "❗ Пароль должен содержать минимум 8 символов"
+          "❗ Введите корректный Telegram ID"
         );
       }
 
-      state.password = password;
+      const telegramId = Number(text);
+
+      // Проверяем, не привязан ли этот Telegram
+      // к другому аккаунту с email
+      const telegramUser =
+        await User.findOne({
+          telegram_id: telegramId,
+        });
+
+      if (
+        telegramUser &&
+        telegramUser._id.toString() !== state.user_id
+      ) {
+        // Если у Telegram-пользователя уже есть полноценный
+        // аккаунт с email — этот ID занят.
+        if (telegramUser.email) {
+          return bot.sendMessage(
+            msg.chat.id,
+            "❌ Этот Telegram ID уже привязан к другому аккаунту."
+          );
+        }
+
+        // Если это пустая запись, автоматически созданная
+        // ботом после /start, удаляем её.
+        await User.deleteOne({
+          _id: telegramUser._id,
+        });
+      }
+
+      state.telegram_id = telegramId;
       state.step = "lessons";
 
       return bot.sendMessage(
@@ -442,7 +447,7 @@ ${error.message}`
       );
     }
 
-    // 5. Уроки
+    // 3. Количество уроков
     if (state.step === "lessons") {
       if (
         !isNumber(text) ||
@@ -463,7 +468,7 @@ ${error.message}`
       );
     }
 
-    // 6. Срок доступа + создание пользователя
+    // 4. Срок + создание кода подтверждения
     if (state.step === "days") {
       if (
         !isNumber(text) ||
@@ -476,68 +481,78 @@ ${error.message}`
       }
 
       try {
-        const passwordHash =
-          await bcrypt.hash(
-            state.password,
-            12
+        const user =
+          await User.findById(
+            state.user_id
           );
+
+        if (!user) {
+          delete states[msg.chat.id];
+
+          return bot.sendMessage(
+            msg.chat.id,
+            "❌ Пользователь больше не найден."
+          );
+        }
+
+        // 6-значный одноразовый код
+        const verificationCode =
+          crypto.randomInt(
+            100000,
+            1000000
+          ).toString();
 
         const expiresAt = new Date(
           Date.now() +
           Number(text) * 86400000
         );
 
-        const user =
-          await User.findOneAndUpdate(
-            {
-              telegram_id:
-                state.telegram_id,
-            },
-            {
-              $set: {
-                telegram_id:
-                  state.telegram_id,
+        // Код действует 30 минут
+        const codeExpiresAt = new Date(
+          Date.now() +
+          30 * 60 * 1000
+        );
 
-                name: state.name,
+        user.telegram_id =
+          state.telegram_id;
 
-                email: state.email,
+        user.lessons_available =
+          state.lessons;
 
-                password_hash:
-                  passwordHash,
+        user.expires_at =
+          expiresAt;
 
-                app_access: true,
+        // Доступ окончательно откроем
+        // после ввода кода в приложении
+        user.app_access = false;
+        user.is_active = false;
+        user.is_verified = false;
 
-                lessons_available:
-                  state.lessons,
+        user.verification_code =
+          verificationCode;
 
-                expires_at:
-                  expiresAt,
+        user.verification_code_expires_at =
+          codeExpiresAt;
 
-                is_active: true,
+        user.device_id = null;
 
-                // При повторном создании/выдаче
-                // разрешаем привязать устройство заново
-                device_id: null,
-              },
-            },
-            {
-              upsert: true,
-              new: true,
-              setDefaultsOnInsert: true,
-            }
-          );
+        await user.save();
 
         await bot.sendMessage(
           msg.chat.id,
-          `✅ Пользователь приложения создан
+          `✅ Пользователь подготовлен
 
 👤 Имя: ${user.name}
+📞 Телефон: ${user.phone || "не указан"}
 📧 Email: ${user.email}
+🆔 Telegram ID: ${user.telegram_id}
 📚 Уроков: ${user.lessons_available}
 📅 Доступ до: ${expiresAt.toLocaleDateString()}
 
-🔑 Временный пароль:
-<code>${state.password}</code>`,
+🔐 Код подтверждения:
+<code>${verificationCode}</code>
+
+⏱ Код действует 30 минут.`,
           {
             parse_mode: "HTML",
           }
@@ -546,23 +561,29 @@ ${error.message}`
         try {
           await bot.sendMessage(
             state.telegram_id,
-            `🎓 Вам открыт доступ к приложению Step to Korea.
+            `🎓 Step to Korea
 
-📧 Email:
-<code>${state.email}</code>
+Ваш аккаунт подготовлен.
 
-🔑 Временный пароль:
-<code>${state.password}</code>
+🔐 Код подтверждения:
+<code>${verificationCode}</code>
 
-Используйте эти данные для входа в приложение.`,
+Введите этот код в приложении Step to Korea.
+
+⏱ Код действует 30 минут.`,
             {
               parse_mode: "HTML",
             }
           );
         } catch (error) {
           console.log(
-            "Не удалось отправить данные ученику:",
+            "Не удалось отправить код ученику:",
             error.message
+          );
+
+          await bot.sendMessage(
+            msg.chat.id,
+            "⚠️ Аккаунт подготовлен, но бот не смог отправить код ученику. Убедитесь, что ученик сначала написал /start этому боту."
           );
         }
 
@@ -573,9 +594,9 @@ ${error.message}`
           error
         );
 
-        bot.sendMessage(
+        await bot.sendMessage(
           msg.chat.id,
-          "❌ Ошибка при создании пользователя"
+          "❌ Ошибка при подготовке пользователя"
         );
 
         delete states[msg.chat.id];
@@ -758,7 +779,13 @@ bot.onText(/\/get_token/, async (msg) => {
 });
 
 bot.onText(/\/add_user_app$/, (msg) => {
-  startAction(msg, "add_user_app", "👤 Введите Telegram ID:");
+  startAction(
+    msg,
+    "add_user_app",
+    "📧 Введите email зарегистрированного ученика:"
+  );
+
+  states[msg.chat.id].step = "email";
 });
 
 bot.onText(/\/reset_token_app$/, (msg) => {

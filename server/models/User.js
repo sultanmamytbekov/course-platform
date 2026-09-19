@@ -15,7 +15,31 @@ const userSchema = new mongoose.Schema(
       default: "",
       trim: true,
     },
+    // Номер телефона ученика
+phone: {
+  type: String,
+  default: "",
+  trim: true,
+},
 
+// Одноразовый код подтверждения,
+// который пользователь получит через Telegram
+verification_code: {
+  type: String,
+  default: null,
+},
+
+// До какого времени действует код
+verification_code_expires_at: {
+  type: Date,
+  default: null,
+},
+
+// Подтверждён ли аккаунт кодом
+is_verified: {
+  type: Boolean,
+  default: false,
+},
     email: {
       type: String,
       trim: true,
