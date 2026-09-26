@@ -32,6 +32,8 @@ function generateToken() {
 // 📋 команды
 bot.setMyCommands([
   { command: "start", description: "👋 Старт" },
+  { command: "confirm_registration", description: "✅ Подтвердить регистрацию", },
+  { command: "approve_registration", description: "✅ Одобрить регистрацию ученика" },
   { command: "add_user", description: "➕ Добавить пользователя" },
   { command: "add_lessons", description: "📚 Обновить уроки" },
   { command: "extend", description: "⏳ Продлить доступ" },
@@ -45,6 +47,7 @@ bot.setMyCommands([
   { command: "get_token", description: "🔑 Получить код приложения" },
   { command: "reset_device", description: "📱 Сбросить устройство" },
   { command: "embassy_access", description: "🏛 Открыть раздел Посольство" },
+
 ]);
 
 // ❌ отмена
@@ -78,6 +81,306 @@ bot.on("message", async (msg) => {
   // 🔐 проверка числа
   const isNumber = (v) => !isNaN(Number(v));
 
+  // ===== CONFIRM REGISTRATION =====
+  if (state.action === "confirm_registration") {
+    if (state.step === "email") {
+      const email = text?.trim().toLowerCase();
+
+      const emailRegex =
+        /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+      if (!email || !emailRegex.test(email)) {
+        return bot.sendMessage(
+          msg.chat.id,
+          "❗ Введите корректный Email"
+        );
+      }
+
+      const user = await User.findOne({
+        email,
+      });
+
+      if (!user) {
+        return bot.sendMessage(
+          msg.chat.id,
+          "❌ Регистрация с таким Email не найдена."
+        );
+      }
+
+      if (user.is_verified) {
+        delete states[msg.chat.id];
+
+        return bot.sendMessage(
+          msg.chat.id,
+          "✅ Этот аккаунт уже подтверждён. Вы можете войти в приложение."
+        );
+      }
+
+      user.telegram_id = Number(msg.chat.id);
+
+      await user.save();
+
+      await bot.sendMessage(
+        msg.chat.id,
+        `✅ Регистрация найдена.
+
+👤 ${user.name}
+📧 ${user.email}
+
+Заявка отправлена администратору.
+Ожидайте подтверждения.`
+      );
+
+      // Сообщаем всем администраторам
+      for (const adminId of ADMINS) {
+        try {
+          await bot.sendMessage(
+            adminId,
+            `🆕 Новая регистрация Step to Korea
+
+👤 Имя: ${user.name}
+📧 Email: ${user.email}
+📞 Телефон: ${user.phone || "не указан"}
+🆔 Telegram ID: ${user.telegram_id}
+
+Ученик ожидает подтверждения.`
+          );
+        } catch (error) {
+          console.log(
+            "Не удалось уведомить администратора:",
+            error.message
+          );
+        }
+      }
+
+      delete states[msg.chat.id];
+      return;
+    }
+  }
+
+  // ===== APPROVE REGISTRATION =====
+  if (state.action === "approve_registration") {
+
+    // 1. Email
+    if (state.step === "email") {
+      const email = text?.trim().toLowerCase();
+
+      const emailRegex =
+        /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+      if (!email || !emailRegex.test(email)) {
+        return bot.sendMessage(
+          msg.chat.id,
+          "❗ Введите корректный Email"
+        );
+      }
+
+      const user = await User.findOne({
+        email,
+      });
+
+      if (!user) {
+        return bot.sendMessage(
+          msg.chat.id,
+          "❌ Пользователь с таким Email не найден."
+        );
+      }
+
+      if (user.is_verified) {
+        delete states[msg.chat.id];
+
+        return bot.sendMessage(
+          msg.chat.id,
+          "✅ Этот аккаунт уже подтверждён."
+        );
+      }
+
+      if (!user.telegram_id) {
+        return bot.sendMessage(
+          msg.chat.id,
+          `❌ Telegram ещё не привязан.
+
+Ученик должен сначала открыть бота, выполнить /confirm_registration и указать этот Email.`
+        );
+      }
+
+      state.user_id = user._id.toString();
+      state.email = user.email;
+      state.step = "lessons";
+
+      return bot.sendMessage(
+        msg.chat.id,
+        `👤 Пользователь найден
+
+Имя: ${user.name}
+📧 Email: ${user.email}
+📞 Телефон: ${user.phone || "не указан"}
+🆔 Telegram ID: ${user.telegram_id}
+
+📚 Сколько уроков открыть?`
+      );
+    }
+
+    // 2. Количество уроков
+    if (state.step === "lessons") {
+      if (
+        !isNumber(text) ||
+        Number(text) <= 0
+      ) {
+        return bot.sendMessage(
+          msg.chat.id,
+          "❗ Введите корректное количество уроков"
+        );
+      }
+
+      state.lessons = Number(text);
+      state.step = "days";
+
+      return bot.sendMessage(
+        msg.chat.id,
+        "⏳ На сколько дней открыть доступ?"
+      );
+    }
+  }
+  // 3. Срок доступа + код подтверждения
+  if (state.step === "days") {
+    if (
+      !isNumber(text) ||
+      Number(text) <= 0
+    ) {
+      return bot.sendMessage(
+        msg.chat.id,
+        "❗ Введите корректное количество дней"
+      );
+    }
+
+    try {
+      const user = await User.findById(
+        state.user_id
+      );
+
+      if (!user) {
+        delete states[msg.chat.id];
+
+        return bot.sendMessage(
+          msg.chat.id,
+          "❌ Пользователь не найден."
+        );
+      }
+
+      const chars =
+        "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+      let verificationCode = "";
+
+      for (let i = 0; i < 5; i++) {
+        verificationCode +=
+          chars[
+          crypto.randomInt(
+            0,
+            chars.length
+          )
+          ];
+      }
+
+      const days = Number(text);
+
+      const expiresAt = new Date(
+        Date.now() + days * 86400000
+      );
+
+      const codeExpiresAt = new Date(
+        Date.now() + 30 * 60 * 1000
+      );
+
+      user.lessons_available =
+        state.lessons;
+
+      user.expires_at =
+        expiresAt;
+
+      // Пока ученик не ввёл код — доступ закрыт
+      user.is_verified = false;
+      user.app_access = false;
+      user.is_active = false;
+
+      user.verification_code =
+        verificationCode;
+
+      user.verification_code_expires_at =
+        codeExpiresAt;
+
+      user.device_id = null;
+
+      await user.save();
+
+      // Ответ администратору
+      await bot.sendMessage(
+        msg.chat.id,
+        `✅ Регистрация одобрена
+
+👤 ${user.name}
+📧 ${user.email}
+🆔 Telegram ID: ${user.telegram_id}
+📚 Уроков: ${user.lessons_available}
+⏳ Дней: ${days}
+📅 Доступ до: ${expiresAt.toLocaleDateString()}
+
+🔐 Код подтверждения:
+<code>${verificationCode}</code>
+
+⏱ Код действует 30 минут.`,
+        {
+          parse_mode: "HTML",
+        }
+      );
+
+      // Отправляем код ученику
+      try {
+        await bot.sendMessage(
+          user.telegram_id,
+          `🎓 Step to Korea
+
+Ваша регистрация одобрена.
+
+🔐 Код подтверждения:
+<code>${verificationCode}</code>
+
+Введите этот код в приложении.
+
+⏱ Код действует 30 минут.`,
+          {
+            parse_mode: "HTML",
+          }
+        );
+      } catch (error) {
+        console.log(
+          "Не удалось отправить код ученику:",
+          error.message
+        );
+
+        await bot.sendMessage(
+          msg.chat.id,
+          "⚠️ Регистрация одобрена, но сообщение ученику отправить не удалось."
+        );
+      }
+
+      delete states[msg.chat.id];
+      return;
+    } catch (error) {
+      console.log(
+        "APPROVE REGISTRATION ERROR:",
+        error
+      );
+
+      delete states[msg.chat.id];
+
+      return bot.sendMessage(
+        msg.chat.id,
+        "❌ Ошибка при подтверждении регистрации."
+      );
+    }
+  } 
   // ===== ADD USER =====
   if (state.action === "add_user") {
     if (state.step === "id") {
@@ -496,11 +799,19 @@ ${error.message}`
         }
 
         // 6-значный одноразовый код
-        const verificationCode =
-          crypto.randomInt(
-            100000,
-            1000000
-          ).toString();
+        const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+        let verificationCode = "";
+
+        for (let i = 0; i < 5; i++) {
+          verificationCode +=
+            chars[
+            crypto.randomInt(
+              0,
+              chars.length
+            )
+            ];
+        }
 
         const expiresAt = new Date(
           Date.now() +
@@ -739,7 +1050,34 @@ bot.onText(/\/start/, (msg) => {
     { parse_mode: "HTML" }
   );
 });
+// ===== CONFIRM REGISTRATION =====
+bot.onText(/\/confirm_registration$/, (msg) => {
+  // Админам эта команда не нужна
+  if (ADMINS.includes(msg.chat.id)) {
+    return bot.sendMessage(
+      msg.chat.id,
+      "ℹ️ Эта команда предназначена для учеников."
+    );
+  }
 
+  states[msg.chat.id] = {
+    action: "confirm_registration",
+    step: "email",
+    telegram_id: Number(msg.chat.id),
+  };
+
+  bot.sendMessage(
+    msg.chat.id,
+    `📱 Подтверждение регистрации
+
+Введите Email, который вы указали при регистрации в приложении Step to Korea.
+
+Например:
+student@gmail.com
+
+/cancel — отмена`
+  );
+});
 // список
 bot.onText(/\/list_users/, async (msg) => {
   if (!ADMINS.includes(msg.chat.id))
@@ -777,7 +1115,24 @@ bot.onText(/\/get_token/, async (msg) => {
     }
   );
 });
+bot.onText(/\/approve_registration$/, (msg) => {
+  if (!ADMINS.includes(msg.chat.id)) {
+    return bot.sendMessage(
+      msg.chat.id,
+      "⛔ Нет доступа"
+    );
+  }
 
+  states[msg.chat.id] = {
+    action: "approve_registration",
+    step: "email",
+  };
+
+  bot.sendMessage(
+    msg.chat.id,
+    "📧 Введите Email зарегистрированного ученика:\n\n(/cancel для отмены)"
+  );
+});
 bot.onText(/\/add_user_app$/, (msg) => {
   startAction(
     msg,

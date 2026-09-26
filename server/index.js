@@ -374,6 +374,115 @@ app.post("/app/register", async (req, res) => {
     });
   }
 });
+// ===== APP VERIFY =====
+app.post("/app/verify", async (req, res) => {
+  try {
+    const { email, code } = req.body;
+
+    if (!email || !code) {
+      return res.status(400).json({
+        success: false,
+        message: "Введите email и код подтверждения",
+      });
+    }
+
+    const normalizedEmail =
+      email.trim().toLowerCase();
+
+    const verificationCode =
+  String(code).trim().toUpperCase();
+
+    const user = await User.findOne({
+      email: normalizedEmail,
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "Пользователь не найден",
+      });
+    }
+
+    if (user.is_verified) {
+      return res.status(400).json({
+        success: false,
+        message: "Аккаунт уже подтверждён",
+      });
+    }
+
+    if (!user.verification_code) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Код подтверждения ещё не выдан. Обратитесь к администратору.",
+      });
+    }
+
+    if (
+      !user.verification_code_expires_at ||
+      new Date() >
+        new Date(
+          user.verification_code_expires_at
+        )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Срок действия кода истёк. Обратитесь к администратору.",
+      });
+    }
+
+    if (
+      user.verification_code !==
+      verificationCode
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Неверный код подтверждения",
+      });
+    }
+
+    // Код правильный — активируем аккаунт
+    user.is_verified = true;
+    user.app_access = true;
+    user.is_active = true;
+
+    // Одноразовый код больше не нужен
+    user.verification_code = null;
+    user.verification_code_expires_at =
+      null;
+
+    await user.save();
+
+    return res.json({
+      success: true,
+      message:
+        "Аккаунт успешно подтверждён. Теперь вы можете войти.",
+
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        lessons_available:
+          user.lessons_available,
+        expires_at: user.expires_at,
+        embassy_access:
+          user.embassy_access,
+      },
+    });
+  } catch (error) {
+    console.error(
+      "APP VERIFY ERROR:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Ошибка сервера",
+    });
+  }
+});
 // ===== APP LOGIN ===== 
 app.post("/app/login", async (req, res) => {
   try {
