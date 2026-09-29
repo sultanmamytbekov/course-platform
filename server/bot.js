@@ -1158,3 +1158,4 @@ bot.onText(/\/reset_device$/, (msg) => {
     "👤 Введите Telegram ID:"
   );
 });
+module.exports = bot;

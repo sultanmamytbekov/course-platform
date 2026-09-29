@@ -2,6 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
+const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("./models/User");
@@ -367,6 +368,226 @@ app.post("/app/register", async (req, res) => {
           "Аккаунт с таким email уже существует",
       });
     }
+
+    return res.status(500).json({
+      success: false,
+      message: "Ошибка сервера",
+    });
+  }
+});
+// ===== APP RESEND VERIFICATION CODE =====
+app.post("/app/resend-verification-code",async (req, res) => {
+    try {
+      const { email } = req.body;
+
+      if (!email) {
+        return res.status(400).json({
+          success: false,
+          message: "Email не указан",
+        });
+      }
+
+      const normalizedEmail =
+        String(email)
+          .trim()
+          .toLowerCase();
+
+      const user = await User.findOne({
+        email: normalizedEmail,
+      });
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: "Пользователь не найден",
+        });
+      }
+
+      // Аккаунт уже подтверждён
+      if (user.is_verified) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Аккаунт уже подтверждён",
+        });
+      }
+
+      // Администратор ещё не одобрил регистрацию
+      if (
+        !user.telegram_id ||
+        !user.expires_at ||
+        !user.lessons_available
+      ) {
+        return res.status(403).json({
+          success: false,
+          message:
+            "Регистрация ещё не одобрена администратором",
+        });
+      }
+
+      // Не выдаём новый код, пока старый ещё действует
+      if (
+        user.verification_code &&
+        user.verification_code_expires_at &&
+        new Date(
+          user.verification_code_expires_at
+        ) > new Date()
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Текущий код ещё действует",
+          code_expires_at:
+            user.verification_code_expires_at,
+        });
+      }
+
+      // Символы без похожих 0/O и 1/I
+      const chars =
+        "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+      let verificationCode = "";
+
+      for (let i = 0; i < 5; i++) {
+        verificationCode +=
+          chars[
+            crypto.randomInt(
+              0,
+              chars.length
+            )
+          ];
+      }
+
+      // Новый код действует 30 минут
+      const codeExpiresAt = new Date(
+        Date.now() + 30 * 60 * 1000
+      );
+
+      user.verification_code =
+        verificationCode;
+
+      user.verification_code_expires_at =
+        codeExpiresAt;
+
+      await user.save();
+
+      try {
+        await bot.sendMessage(
+          user.telegram_id,
+          `🎓 Step to Korea
+
+🔐 Ваш новый код подтверждения:
+<code>${verificationCode}</code>
+
+Введите этот код в приложении.
+
+⏱ Код действует 30 минут.`,
+          {
+            parse_mode: "HTML",
+          }
+        );
+      } catch (telegramError) {
+        console.error(
+          "RESEND TELEGRAM ERROR:",
+          telegramError
+        );
+
+        // Если Telegram не получил сообщение,
+        // отменяем созданный код.
+        user.verification_code = null;
+        user.verification_code_expires_at =
+          null;
+
+        await user.save();
+
+        return res.status(500).json({
+          success: false,
+          message:
+            "Не удалось отправить код в Telegram",
+        });
+      }
+
+      return res.json({
+        success: true,
+        message:
+          "Новый код отправлен в Telegram",
+        code_expires_at:
+          codeExpiresAt,
+      });
+    } catch (error) {
+      console.error(
+        "RESEND VERIFICATION ERROR:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message: "Ошибка сервера",
+      });
+    }
+  }
+);
+// ===== APP REGISTRATION STATUS =====
+app.get("/app/registration-status", async (req, res) => {
+  try {
+    const email = String(
+      req.query.email || ""
+    )
+      .trim()
+      .toLowerCase();
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email не указан",
+      });
+    }
+
+    const user = await User.findOne({
+      email,
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "Пользователь не найден",
+      });
+    }
+
+    const codeReady = Boolean(
+      user.verification_code &&
+      user.verification_code_expires_at &&
+      new Date(
+        user.verification_code_expires_at
+      ) > new Date()
+    );
+
+    return res.json({
+      success: true,
+
+      // Аккаунт уже полностью подтверждён
+      verified: Boolean(
+        user.is_verified
+      ),
+
+      // Администратор уже выдал первый код
+      approved: Boolean(
+        user.telegram_id &&
+        user.verification_code
+      ),
+
+      // Код существует и ещё не истёк
+      code_ready: codeReady,
+
+      code_expires_at:
+        user.verification_code_expires_at ||
+        null,
+    });
+  } catch (error) {
+    console.error(
+      "REGISTRATION STATUS ERROR:",
+      error
+    );
 
     return res.status(500).json({
       success: false,
@@ -1217,7 +1438,8 @@ app.get("/app/lessons", async (req, res) => {
   }
 });
 
-require("./bot");
+// require("./bot");
+const bot = require("./bot");
 
 
 // Получить урок по номеру
