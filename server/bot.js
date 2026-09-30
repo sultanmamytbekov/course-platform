@@ -241,7 +241,6 @@ bot.on("message", async (msg) => {
         "⏳ На сколько дней открыть доступ?"
       );
     }
-  }
   // 3. Срок доступа + код подтверждения
   if (state.step === "days") {
     if (
@@ -380,6 +379,8 @@ bot.on("message", async (msg) => {
         "❌ Ошибка при подтверждении регистрации."
       );
     }
+  }
+  // закрываем approve_registration
   }
   // ===== ADD USER =====
   if (state.action === "add_user") {
@@ -769,67 +770,67 @@ ${error.message}`
     }
 
     // 5. Срок + создание готового аккаунта
-    if (state.step === "days") {
-      if (
-        !isNumber(text) ||
-        Number(text) <= 0
-      ) {
-        return bot.sendMessage(
-          msg.chat.id,
-          "❗ Введите корректное количество дней"
-        );
-      }
+if (state.step === "days") {
+  if (
+    !isNumber(text) ||
+    Number(text) <= 0
+  ) {
+    return bot.sendMessage(
+      msg.chat.id,
+      "❗ Введите корректное количество дней"
+    );
+  }
 
-      try {
-        const expiresAt = new Date(
-          Date.now() +
-          Number(text) * 86400000
-        );
+  try {
+    const expiresAt = new Date(
+      Date.now() +
+      Number(text) * 86400000
+    );
 
-        // Дополнительная проверка Email
-        const existingUser = await User.findOne({
-          email: state.email,
-        });
+    // Дополнительная проверка Email
+    const existingUser = await User.findOne({
+      email: state.email,
+    });
 
-        if (existingUser) {
-          delete states[msg.chat.id];
+    if (existingUser) {
+      delete states[msg.chat.id];
 
-          return bot.sendMessage(
-            msg.chat.id,
-            "❌ Пользователь с таким Email уже существует."
-          );
-        }
+      return bot.sendMessage(
+        msg.chat.id,
+        "❌ Пользователь с таким Email уже существует."
+      );
+    }
 
-        // Создаём полностью готового пользователя
-        const user = await User.create({
-          email: state.email,
-          password_hash: state.password_hash,
+    // Создаём полностью готового пользователя
+    const user = await User.create({
+      email: state.email,
+      password_hash: state.password_hash,
 
-          telegram_id: state.telegram_id,
+      telegram_id: state.telegram_id,
 
-          lessons_available: state.lessons,
-          expires_at: expiresAt,
+      lessons_available: state.lessons,
+      expires_at: expiresAt,
 
-          // Админ создал аккаунт —
-          // дополнительное подтверждение не требуется
-          is_verified: true,
-          app_access: true,
-          is_active: true,
+      // Админ создал аккаунт —
+      // дополнительное подтверждение не требуется
+      is_verified: true,
+      app_access: true,
+      is_active: true,
 
-          verification_code: null,
-          verification_code_expires_at: null,
+      verification_code: null,
+      verification_code_expires_at: null,
 
-          device_id: null,
+      device_id: null,
 
-          // Поля сайта пока не используются
-          token: null,
-          ip: null,
-          device: null,
-        });
+      // Поля сайта пока не используются
+      token: null,
+      ip: null,
+      device: null,
+    });
 
-        await bot.sendMessage(
-          msg.chat.id,
-          `✅ Аккаунт приложения создан
+    await bot.sendMessage(
+      msg.chat.id,
+      `✅ Аккаунт приложения создан
 
 📧 Email: ${user.email}
 🆔 Telegram ID: ${user.telegram_id}
@@ -840,12 +841,12 @@ ${error.message}`
 🔐 Дополнительный 5-значный код не требуется.
 
 Ученик может сразу войти в приложение по Email и паролю.`
-        );
+    );
 
-        try {
-          await bot.sendMessage(
-            state.telegram_id,
-            `🎓 Step to Korea
+    try {
+      await bot.sendMessage(
+        state.telegram_id,
+        `🎓 Step to Korea
 
 Ваш аккаунт создан администратором.
 
@@ -856,36 +857,36 @@ ${state.email}
 Дополнительный код подтверждения не требуется.
 
 Теперь вы можете войти в приложение.`
-          );
-        } catch (error) {
-          console.log(
-            "Не удалось отправить сообщение ученику:",
-            error.message
-          );
+      );
+    } catch (error) {
+      console.log(
+        "Не удалось отправить сообщение ученику:",
+        error.message
+      );
 
-          await bot.sendMessage(
-            msg.chat.id,
-            "⚠️ Аккаунт создан, но бот не смог отправить сообщение ученику. Убедитесь, что ученик написал /start этому боту."
-          );
-        }
-
-        delete states[msg.chat.id];
-      } catch (error) {
-        console.log(
-          "ADD USER APP ERROR:",
-          error
-        );
-
-        await bot.sendMessage(
-          msg.chat.id,
-          "❌ Ошибка при создании аккаунта"
-        );
-
-        delete states[msg.chat.id];
-      }
-
-      return;
+      await bot.sendMessage(
+        msg.chat.id,
+        "⚠️ Аккаунт создан, но бот не смог отправить сообщение ученику. Убедитесь, что ученик написал /start этому боту."
+      );
     }
+
+    delete states[msg.chat.id];
+  } catch (error) {
+    console.log(
+      "ADD USER APP ERROR:",
+      error
+    );
+
+    await bot.sendMessage(
+      msg.chat.id,
+      "❌ Ошибка при создании аккаунта"
+    );
+
+    delete states[msg.chat.id];
+  }
+
+  return;
+}
   }
   // ===== RESET TOKEN APP =====
   if (state.action === "reset_token_app") {
